@@ -29,45 +29,6 @@ def close_browser():
     finally:
         _pw = _browser = _page = None
 
-# Multi-step login tool for admin
-'''@tool
-def admin_login(_: str = "") -> str:
-    """Perform admin login: fill email, click Next, fill password, submit."""
-    p = ensure_browser()
-    import time
-    from dotenv import load_dotenv
-    load_dotenv()
-    email = os.getenv("MEDPLUM_USER", "")
-    password = os.getenv("MEDPLUM_PASS", "")
-    if not email or not password:
-        return "login:error:missing_credentials"
-    # Fill email
-    email_input = p.locator("input[name='email']")
-    if not email_input.count():
-        return "login:error:email_field_not_found"
-    email_input.first.fill(email)
-    # Click Next
-    next_btn = p.locator("button:has-text('Next')")
-    if not next_btn.count():
-        return "login:error:next_button_not_found"
-    next_btn.first.click()
-    # Wait for password field
-    for _ in range(10):
-        password_input = p.locator("input[name='password']")
-        if password_input.count():
-            break
-        time.sleep(0.3)
-    else:
-        return "login:error:password_field_not_found"
-    password_input.first.fill(password)
-    # Submit
-    submit_btn = p.locator("button[type='submit'], button:has-text('Sign In'), button:has-text('Login')")
-    if not submit_btn.count():
-        return "login:error:submit_button_not_found"
-    submit_btn.first.click()
-    p.wait_for_load_state("networkidle")
-    return "login:ok"
-'''
 @tool
 def nav(_: str = "") -> str:
     """Navigate to the EMR system base URL only. Ignores any path argument."""
@@ -107,66 +68,66 @@ def read_texts(_: str = "") -> str:
 @tool
 def click_text(text: str) -> str:
     """
-    Click a button/link or icon by visible text, aria-label, title, or CSS class (case-insensitive substring).
+    Click a button/link/icon/input by visible text, aria-label, title, placeholder, alt, or CSS class (case-insensitive substring).
     """
     p = ensure_browser()
-    # Try text, aria-label, and title first
+    # Sanitize text for selector
+    safe_text = text.replace("\n", " ").replace("\r", " ").strip()
+    # Try text, aria-label, title, placeholder, alt
     loc = p.locator(
-        f"button:has-text('{text}'), a:has-text('{text}'), [role='button']:has-text('{text}'), "
-        f"[aria-label*='{text}'], [title*='{text}']"
+        f"button:has-text('{safe_text}'), a:has-text('{safe_text}'), [role='button']:has-text('{safe_text}'), "
+        f"[aria-label*='{safe_text}'], [title*='{safe_text}'], input[placeholder*='{safe_text}'], input[aria-label*='{safe_text}'], img[alt*='{safe_text}']"
     )
     if loc.count():
         loc.first.click()
         p.wait_for_load_state('networkidle')
         return "click:ok"
     # Try by CSS class if text/label/title not found
-    icon_loc = p.locator(f".{text}")
+    icon_loc = p.locator(f".{safe_text}")
     if icon_loc.count():
         icon_loc.first.click()
         p.wait_for_load_state('networkidle')
         return "click:ok"
     return "click:not_found"
 
+
 @tool
-def fill_name(kv: str) -> str:
-    """Fill by input name. Format: name=value (e.g., email=alice@example.com)."""
+def fill_field(kv: str) -> str:
+    """
+    Fill an input/textarea/select by name or placeholder. If not found, and only one select is visible, tries that.
+    Format: key=value (e.g., email=alice@example.com or placeholder=Search=John).
+    """
     p = ensure_browser()
     m = re.match(r"\s*(.+?)\s*=\s*(.*)\s*", kv)
     if not m:
         return "fill:bad_format"
-    name, value = m.group(1), m.group(2)
-    loc = p.locator(f"input[name='{name}'], textarea[name='{name}'], select[name='{name}']")
+    key, value = m.group(1), m.group(2)
+    
+    # Try by name
+    loc = p.locator(f"input[name='{key}'], textarea[name='{key}'], select[name='{key}']")
+    if not loc.count():
+        # Try by placeholder
+        loc = p.locator(f"input[placeholder='{key}'], textarea[placeholder='{key}']")
     if not loc.count():
         return "fill:not_found"
-    # Check if the field is disabled
-    if loc.first.get_attribute("disabled") is not None:
-        return "fill:field_disabled"
-    tag = loc.first.evaluate("e => e.tagName.toLowerCase()")
-    if tag == "select":
+    
+    # Check if the found element is a dropdown
+    if loc.first.evaluate("e => e.tagName.toLowerCase()") == "select":
         try:
-            loc.first.select_option(label=value)
+            loc.first.select_option(label=value)  # Try to select by label
         except Exception:
-            loc.first.select_option(value)
+            loc.first.select_option(value)  # Fallback to select by value
     else:
+        # Fill the input field
         loc.first.fill(value)
+    
+    # Additional handling for dropdowns that are not standard selects
+    if loc.first.evaluate("e => e.tagName.toLowerCase()") in ["input", "textarea"]:
+        loc.first.focus()  # Focus to trigger any dropdowns
+        p.wait_for_timeout(500)  # Wait for any dropdown options to appear
+
     return "fill:ok"
 
-'''@tool
-def submit(_: str = "") -> str:
-    """Click submit or common primary action button."""
-    p = ensure_browser()
-    loc = p.locator("button[type='submit']")
-    if not loc.count():
-        loc = p.locator(
-            "button:has-text('Create'), button:has-text('Save'), "
-            "button:has-text('Submit'), button:has-text('Next'), button:has-text('Continue')"
-        )
-    if not loc.count():
-        return "submit:not_found"
-    loc.first.click()
-    p.wait_for_load_state("networkidle")
-    return "submit:ok"
-'''
 @tool
 def get_secret(key: str) -> str:
     """Return env secrets for MEDPLUM_USER or MEDPLUM_PASS. Format 'KEY=value' or 'KEY=' if missing."""
@@ -176,12 +137,45 @@ def get_secret(key: str) -> str:
     val = os.getenv(key, "")
     return f"{key}={val}"
 
-'''@tool
-def close(_: str = "") -> str:
-    """Close the browser."""
-    close_browser()
-    return "closed"
-'''
+
+@tool
+def click_dropdown_after_fill(kv: str, option_text: str) -> str:
+    """
+    Fill an input or textarea by name or placeholder, then click the dropdown to show options and select an option.
+    Format: key=value (e.g., Search=your search query).
+    """
+    p = ensure_browser()
+    m = re.match(r"\s*(.+?)\s*=\s*(.*)\s*", kv)
+    if not m:
+        return "fill:bad_format"
+    key, value = m.group(1), m.group(2)
+    
+    # Try by name
+    loc = p.locator(f"input[name='{key}'], textarea[name='{key}']")
+    if not loc.count():
+        # Try by placeholder
+        loc = p.locator(f"input[placeholder='{key}'], textarea[placeholder='{key}']")
+    if not loc.count():
+        return "click_dropdown:not_found"
+    
+    # Fill the input field
+    loc.first.fill(value)
+    loc.first.focus()
+    
+    # Click the dropdown to show options
+    loc.first.click()
+    
+    # Wait for the dropdown options to be visible
+    option_locator = p.locator(f"div[role='option']:has-text('{option_text}')")  # Adjust this selector based on your dropdown structure
+    option_locator.wait_for(state='visible', timeout=5000)  # Adjust timeout as needed
+    
+    # Click the desired option in the dropdown
+    if option_locator.count():
+        option_locator.first.click()
+        return "option_selected:ok"
+    
+    return "option_selected:not_found"
+
 # export list for main
 #TOOLS = [nav, read_texts, click_text, fill_name, submit, get_secret, close, admin_login]
-TOOLS = [nav, read_texts, click_text, fill_name,get_secret]
+TOOLS = [nav, read_texts, click_text, fill_field,get_secret, click_dropdown_after_fill]
