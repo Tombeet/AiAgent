@@ -1,0 +1,6 @@
+# requirements.txt (safe, cross-version)
+python-dotenv
+playwright
+langchain
+langchain-openai
+openai
