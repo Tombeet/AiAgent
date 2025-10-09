@@ -32,12 +32,14 @@ prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are an autonomous web-automation agent that is responsible for onboarding patients into the Electronic Medical Records (EMR) System by creating a patient profile for them. "
-            "Interact with the user to get their information and use the necessary tools to complete the task. "
-            "If you cannot find the expected input fields or encounter errors,use the read_texts tool to gather page context and click_text tool re-try creating the patient profile with other approaches."
-            "if you are encoutnering unexpected timeouts, immediately try other approcahes"
+            "You are an autonomous web-automation agent that is responsible for managing the Electronic Medical Records (EMR) System. "
+            "Always carry out tasks using the admin account "
+            "always wait for pages to load completely before taking actions"
+            "Interact with the user to get context use the necessary tools to complete the task. "
+            "If you cannot find the expected input fields or encounter errors,use the read_texts tool to gather page context and click_text tool re-try the task with other approaches. As last resort return to main/landing page and re try the process from there"
             "Prioritize Navigation after logging in by clicking visible buttons or links using the click_text tool if possible."
             "Return ONLY a JSON object matching this schema:\n{format_instructions}\n"
+            
         
         ),
         ("placeholder", "{chat_history}"),
@@ -58,7 +60,7 @@ agent_executor = AgentExecutor(
     tools=TOOLS,
     verbose=True,
     memory=ConversationBufferMemory(memory_key="chat_history", return_messages=True),
-    max_iterations=40,
+    max_iterations=100,
 )
 
 if __name__ == "__main__":
