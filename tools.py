@@ -1,9 +1,13 @@
 # tools.py — small, generic web-automation tools (no Medplum-specific paths)
 
-import os, re
+import os, re, asyncio, sys
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 from langchain.tools import tool
+
+# Fix for Windows: required to allow Playwright subprocesses
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 load_dotenv()
 
@@ -175,6 +179,12 @@ def click_dropdown_after_fill(kv: str, option_text: str) -> str:
         return "option_selected:ok"
     
     return "option_selected:not_found"
+
+def capture_screenshot(path: str = "latest_screenshot.png") -> str:
+    p = ensure_browser()
+    p.screenshot(path=path)
+    return path
+
 
 # export list for main
 #TOOLS = [nav, read_texts, click_text, fill_name, submit, get_secret, close, admin_login]

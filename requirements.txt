@@ -4,3 +4,4 @@ playwright
 langchain
 langchain-openai
 openai
+streamlit
