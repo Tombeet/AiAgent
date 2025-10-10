@@ -25,7 +25,7 @@ class AutomationResult(BaseModel):
 parser = PydanticOutputParser(pydantic_object=AutomationResult)
 
 # ---------- LLM ----------
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
+llm = ChatOpenAI(model="gpt-4o", temperature=0.2)
 
 # ---------- Prompt (matches your agent template) ----------
 prompt = ChatPromptTemplate.from_messages(

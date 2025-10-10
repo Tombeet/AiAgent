@@ -94,7 +94,6 @@ def click_text(text: str) -> str:
         return "click:ok"
     return "click:not_found"
 
-
 @tool
 def fill_field(kv: str) -> str:
     """
@@ -128,7 +127,32 @@ def fill_field(kv: str) -> str:
     # Additional handling for dropdowns that are not standard selects
     if loc.first.evaluate("e => e.tagName.toLowerCase()") in ["input", "textarea"]:
         loc.first.focus()  # Focus to trigger any dropdowns
-        p.wait_for_timeout(500)  # Wait for any dropdown options to appear
+        p.wait_for_timeout(1500)  # Increased wait time for dropdown options to appear
+        
+        # Try to find and click dropdown suggestions containing the search term
+        suggestion_selectors = [
+            f"div:has-text('{value}')",  # Generic div containing the text
+            f"[role='option']:has-text('{value}')",  # ARIA option role
+            f".suggestion:has-text('{value}')",  # Common CSS class
+            f".dropdown-item:has-text('{value}')",  # Bootstrap-style
+            f"li:has-text('{value}')",  # List item
+            f".autocomplete-suggestion:has-text('{value}')",  # Autocomplete style
+        ]
+        
+        for selector in suggestion_selectors:
+            suggestion_loc = p.locator(selector)
+            if suggestion_loc.count() > 0:
+                try:
+                    # Get the suggestion text before clicking
+                    suggestion_text = suggestion_loc.first.inner_text()
+                    suggestion_loc.first.click()
+                    p.wait_for_timeout(500)  # Wait for navigation/update
+                    return f"fill:ok_suggestion_selected:{suggestion_text}"
+                except Exception as e:
+                    continue  # Try next selector
+        
+        # If no suggestions found, return that field was filled but no suggestions
+        return "fill:ok_but_no_suggestions"
 
     return "fill:ok"
 
