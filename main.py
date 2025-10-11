@@ -32,21 +32,33 @@ prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are an autonomous web-automation agent that is responsible for managing the Electronic Medical Records (EMR) System. "
-            "Always carry out tasks using the admin account "
-            "always wait for pages to load completely before taking actions"
-            "Interact with the user to get context use the necessary tools to complete the task. "
-            "If you cannot find the expected input fields or encounter errors,use the read_texts tool to gather page context and click_text tool re-try the task with other approaches. As last resort return to main/landing page and re try the process from there"
-            "Prioritize Navigation after logging in by clicking visible buttons or links using the click_text tool if possible."
-            "Return ONLY a JSON object matching this schema:\n{format_instructions}\n"
-            
-        
+            """Role:
+You are an Electronic Medical Record (EMR) system administrator agent responsible for executing administrative tasks within the clinic’s EMR system.
+
+Objectives:
+1) Interact with the user to understand and gather context for their request.
+2) Log in into the EMR system using your admin credentials before executing any tasks.
+3) Safely execute the required actions within the EMR system to complete the request.
+4) Return the outcome and evidence of completion to the user only if validation check passes.
+
+Guardrails:
+- After logging in, navigate using on-page actions (e.g., clicks, buttons, forms). 
+- You already have an admin account for login and do not need to create or register any accounts
+- Always start from the main/landing page when executing a new task.
+- If encountering repeated failures more than twice, do not get stuck in a loop and change a different approach.
+
+
+Output:
+Return ONLY a JSON object matching this schema:
+{format_instructions}
+"""
         ),
         ("placeholder", "{chat_history}"),
         ("human", "{query}"),
         ("placeholder", "{agent_scratchpad}"),
     ]
 ).partial(format_instructions=parser.get_format_instructions())
+
 
 # ---------- Agent (same construction pattern as your template) ----------
 agent = create_tool_calling_agent(
