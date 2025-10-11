@@ -33,14 +33,6 @@ def close_browser():
     finally:
         _pw = _browser = _page = None
 
-@tool
-def nav(_: str = "") -> str:
-    """Navigate to the EMR system base URL only. Ignores any path argument."""
-    p = ensure_browser()
-    url = BASE_URL
-    p.goto(url)
-    p.wait_for_load_state("domcontentloaded")
-    return f"navigated:{p.url}"
 
 @tool
 def read_texts(_: str = "") -> str:
@@ -86,12 +78,18 @@ def click_text(text: str) -> str:
         loc.first.click()
         p.wait_for_load_state('networkidle')
         return "click:ok"
-    # Try by CSS class if text/label/title not found
-    icon_loc = p.locator(f".{safe_text}")
-    if icon_loc.count():
-        icon_loc.first.click()
-        p.wait_for_load_state('networkidle')
-        return "click:ok"
+    
+    # Only try CSS class if text looks like a valid CSS class (no numbers at start, no hyphens at start)
+    if safe_text and not safe_text[0].isdigit() and not safe_text.startswith('-'):
+        try:
+            icon_loc = p.locator(f".{safe_text}")
+            if icon_loc.count():
+                icon_loc.first.click()
+                p.wait_for_load_state('networkidle')
+                return "click:ok"
+        except Exception:
+            pass  # Invalid CSS selector, skip
+    
     return "click:not_found"
 
 @tool
@@ -167,49 +165,121 @@ def get_secret(key: str) -> str:
 
 
 @tool
-def click_dropdown_after_fill(kv: str, option_text: str) -> str:
-    """
-    Fill an input or textarea by name or placeholder, then click the dropdown to show options and select an option.
-    Format: key=value (e.g., Search=your search query).
-    """
+def smart_search(search_term: str) -> str:
+    """Intelligently search using any available search mechanism on the current page."""
     p = ensure_browser()
-    m = re.match(r"\s*(.+?)\s*=\s*(.*)\s*", kv)
-    if not m:
-        return "fill:bad_format"
-    key, value = m.group(1), m.group(2)
     
-    # Try by name
-    loc = p.locator(f"input[name='{key}'], textarea[name='{key}']")
-    if not loc.count():
-        # Try by placeholder
-        loc = p.locator(f"input[placeholder='{key}'], textarea[placeholder='{key}']")
-    if not loc.count():
-        return "click_dropdown:not_found"
+    # Find search inputs by attributes (more reliable than text-based clicking)
+    search_selectors = [
+        "input[placeholder*='Search']",  # Your EMR case
+        "input[placeholder*='search' i]",
+        "input[type='search']",
+        "input[name*='search' i]"
+    ]
     
-    # Fill the input field
-    loc.first.fill(value)
-    loc.first.focus()
+    for selector in search_selectors:
+        try:
+            search_field = p.locator(selector)
+            if search_field.count() > 0:
+                search_field.first.click()
+                search_field.first.fill(search_term)
+                search_field.first.press("Enter")
+                p.wait_for_timeout(2000)
+                return f"search_success:{search_term}"
+        except Exception:
+            continue
     
-    # Click the dropdown to show options
-    loc.first.click()
+    # Fallback to existing method
+    try:
+        result = fill_field(f"Search={search_term}")
+        if "ok" in result:
+            return f"search_fallback_success:{search_term}"
+    except Exception:
+        pass
     
-    # Wait for the dropdown options to be visible
-    option_locator = p.locator(f"div[role='option']:has-text('{option_text}')")  # Adjust this selector based on your dropdown structure
-    option_locator.wait_for(state='visible', timeout=5000)  # Adjust timeout as needed
-    
-    # Click the desired option in the dropdown
-    if option_locator.count():
-        option_locator.first.click()
-        return "option_selected:ok"
-    
-    return "option_selected:not_found"
+    return "search_failed"
 
+
+@tool
+def navigate_to_main_page() -> str:
+    """navigate to main page or reset location to main/landing page before starting a new task."""
+    p = ensure_browser()
+    
+    # Try to find common home navigation elements
+    home_selectors = [
+        "a[href='/'], a[href='#/']",  # Home links
+        ".logo, .brand, .navbar-brand",  # Logo elements  
+        "[aria-label*='home' i], [title*='home' i]",  # Home buttons
+        ".navbar-brand, .logo",  # Brand/logo in navbar
+    ]
+    
+    for selector in home_selectors:
+        try:
+            loc = p.locator(selector)
+            if loc.count() > 0:
+                loc.first.click()
+                p.wait_for_load_state('networkidle')
+                return f"reset_via_click:{p.url}"
+        except Exception:
+            continue
+    
+    # Fallback: navigate to base URL if no home elements found
+    try:
+        p.goto(BASE_URL)
+        p.wait_for_load_state('networkidle')
+        p.wait_for_timeout(2000)
+        return f"reset_via_base_url:{p.url}"
+    except Exception as e:
+        return f"reset_failed:{str(e)}"
+
+@tool
 def capture_screenshot(path: str = "latest_screenshot.png") -> str:
+    """Capture a screenshot of the outcome of the request as evidence."""
     p = ensure_browser()
     p.screenshot(path=path)
     return path
 
+@tool 
+def validate_claim_advanced(claim: str, context: str = "") -> str:
+    """
+    Advanced validation using LLM to analyze claims against actual evidence.
+    
+    Args:
+        claim: The specific claim to validate
+        context: Additional context about what task is being performed
+    
+    Returns:
+        Detailed validation result with evidence
+    """
+    from langchain_openai import ChatOpenAI
+    
+    # Get current page content - FIX: Use proper tool invocation
+    current_content = read_texts("")  # Pass empty string as required parameter
+    
+    # Use LLM to validate
+    validation_llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    
+    validation_prompt = f"""
+    You are a strict fact-checker. Validate this claim against actual evidence.
+    
+    CLAIM: {claim}
+    CONTEXT: {context}
+    
+    ACTUAL EVIDENCE (current page content):
+    {current_content}
+    
+    Respond with EXACTLY one of these formats:
+    
+    VALIDATED: [Quote specific text from evidence that proves the claim]
+    
+    NOT_VALIDATED: [Explain what evidence is missing to validate this claim]
+    
+    Be extremely precise. Only validate if you can quote exact matching evidence.
+    """
+    
+    result = validation_llm.invoke(validation_prompt)
+    return result.content
 
 # export list for main
 #TOOLS = [nav, read_texts, click_text, fill_name, submit, get_secret, close, admin_login]
-TOOLS = [nav, read_texts, click_text, fill_field,get_secret, click_dropdown_after_fill]
+TOOLS = [read_texts, click_text, fill_field, get_secret, smart_search, navigate_to_main_page,capture_screenshot, validate_claim_advanced]
