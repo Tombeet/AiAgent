@@ -1,11 +1,11 @@
 import streamlit as st
 import os
-import time
+import concurrent.futures
 
 from main import agent_executor, parser
 from tools import capture_screenshot
 
-st.set_page_config(page_title="AI Agent Chat", page_icon="💬")
+st.set_page_config(page_title="AI Agent Chat", page_icon="🤖")
 st.title("AI Agent Chatbot")
 
 if "messages" not in st.session_state:
@@ -14,11 +14,8 @@ if "messages" not in st.session_state:
 if "latest_output" not in st.session_state:
     st.session_state.latest_output = ""
 
-user_input = st.text_input("What can I help you with?")
-start_button = st.button("Send")
-
-# Placeholder for screenshots
-screenshot_display = st.empty()
+# Chat input field (bottom aligned)
+user_input = st.chat_input("What can I help you with?")
 
 def run_agent(query):
     try:
@@ -29,9 +26,6 @@ def run_agent(query):
             structured = parser.parse(output)
             pretty = f"""
 {structured.message}
-
-Tools Used:
-- {'\n- '.join(structured.tools_used)}
 
 Evidence:
 - {'\n- '.join(structured.evidence)}
@@ -45,38 +39,44 @@ Completed Steps:
 Collected Data:
 - {chr(10).join([f"{k}: {v}" for k, v in structured.data_collected.items()])}
 """
-            return pretty.strip()
+            final_output = pretty.strip()
         except Exception:
-            return output
-    except Exception as e:
-        return f"Agent failed: {e}"
+            final_output = output
 
-# --- Main run logic ---
-if start_button and user_input.strip():
+        # Capture screenshot inside same thread
+        screenshot_path = "latest_screenshot.png"
+        if os.path.exists(screenshot_path):
+            os.remove(screenshot_path)
+        capture_screenshot(screenshot_path)
+
+        return final_output, screenshot_path
+
+    except Exception as e:
+        return f"Agent failed: {e}", None
+
+if user_input:
+    # Show user message
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # Run agent (no threading)
-    output = run_agent(user_input)
+    # Run agent and screenshot in thread
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(run_agent, user_input)
+        output, screenshot_path = future.result()
+
     st.session_state.latest_output = output
 
-    # Capture screenshot after agent run
-    try:
-        path = "latest_screenshot.png"
-        if os.path.exists(path):
-            os.remove(path)
-        capture_screenshot(path)
-        screenshot_display.image(path, caption="Medplum View After Automation", use_container_width=True)
-    except Exception as e:
-        screenshot_display.warning(f"Could not capture screenshot: {e}")
+    # Append assistant message (no direct rendering here)
+    st.session_state.messages.append({"role": "assistant", "content": output})
 
-    # Display final output
-    with st.chat_message("assistant"):
-        st.text(output)
-        st.session_state.messages.append({"role": "assistant", "content": output})
+    # Show screenshot if available
+    if screenshot_path and os.path.exists(screenshot_path):
+        st.image(screenshot_path, caption="Medplum View After Automation", use_container_width=True)
+    else:
+        st.warning("No screenshot captured or file missing.")
 
-# Show full chat history
+# Show entire chat history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
