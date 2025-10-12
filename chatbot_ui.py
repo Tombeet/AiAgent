@@ -1,25 +1,28 @@
 import streamlit as st
+import os
+import time
+
 from main import agent_executor, parser
+from tools import capture_screenshot
 
 st.set_page_config(page_title="AI Agent Chat", page_icon="💬")
 st.title("AI Agent Chatbot")
 
-# Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Chat input field
-user_input = st.chat_input("What can I help you with?")
+if "latest_output" not in st.session_state:
+    st.session_state.latest_output = ""
 
-if user_input:
-    # Show user message
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
+user_input = st.text_input("What can I help you with?")
+start_button = st.button("Send")
 
-    # Agent response block
-    with st.chat_message("assistant"):
-        response = agent_executor.invoke({"query": user_input})
+# Placeholder for screenshots
+screenshot_display = st.empty()
+
+def run_agent(query):
+    try:
+        response = agent_executor.invoke({"query": query})
         output = response.get("output", "")
 
         try:
@@ -42,13 +45,38 @@ Completed Steps:
 Collected Data:
 - {chr(10).join([f"{k}: {v}" for k, v in structured.data_collected.items()])}
 """
-            st.text(pretty.strip())
-            st.session_state.messages.append({"role": "assistant", "content": pretty.strip()})
+            return pretty.strip()
         except Exception:
-            st.text(output)
-            st.session_state.messages.append({"role": "assistant", "content": output})
+            return output
+    except Exception as e:
+        return f"Agent failed: {e}"
 
-# Show chat history
+# --- Main run logic ---
+if start_button and user_input.strip():
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    with st.chat_message("user"):
+        st.markdown(user_input)
+
+    # Run agent (no threading)
+    output = run_agent(user_input)
+    st.session_state.latest_output = output
+
+    # Capture screenshot after agent run
+    try:
+        path = "latest_screenshot.png"
+        if os.path.exists(path):
+            os.remove(path)
+        capture_screenshot(path)
+        screenshot_display.image(path, caption="Medplum View After Automation", use_container_width=True)
+    except Exception as e:
+        screenshot_display.warning(f"Could not capture screenshot: {e}")
+
+    # Display final output
+    with st.chat_message("assistant"):
+        st.text(output)
+        st.session_state.messages.append({"role": "assistant", "content": output})
+
+# Show full chat history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
