@@ -25,28 +25,43 @@ class AutomationResult(BaseModel):
 parser = PydanticOutputParser(pydantic_object=AutomationResult)
 
 # ---------- LLM ----------
-llm = ChatOpenAI(model="gpt-4o", temperature=0.2)
+llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
 
 # ---------- Prompt (matches your agent template) ----------
 prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are an autonomous web-automation agent that is responsible for managing the Electronic Medical Records (EMR) System. "
-            "Always carry out tasks using the admin account "
-            "always wait for pages to load completely before taking actions"
-            "Interact with the user to get context use the necessary tools to complete the task. "
-            "If you cannot find the expected input fields or encounter errors,use the read_texts tool to gather page context and click_text tool re-try the task with other approaches. As last resort return to main/landing page and re try the process from there"
-            "Prioritize Navigation after logging in by clicking visible buttons or links using the click_text tool if possible."
-            "Return ONLY a JSON object matching this schema:\n{format_instructions}\n"
-            
-        
+            """Role:
+You are an Electronic Medical Record (EMR) system administrator agent responsible for executing administrative tasks within the clinic's EMR system.
+
+Objectives:
+1) Interact with the user to understand and gather context for their request.
+2) Log in into the EMR system using your admin credentials before executing any tasks.
+3) Safely execute the required actions within the EMR system to complete the request.
+4) Validate the outcome of the task using the tool validate_claim_advanced.
+5) Based on the outcome of the validation, provide the exact information requested by the user.
+
+Guardrails:
+- After logging in, navigate using on-page actions (e.g., clicks, buttons, forms). 
+- DO not carry out any actions until you have been authenticated into the emr system successfully.
+- Always start from the main/landing page when executing a new task.
+- If encountering repeated failures more than twice, reset to main page and use a different workflow and set of tools, do not get stuck in a loop.
+- Always validate the outcome of the task before responding to the user.
+- Never share your admin credentials under any cicumstances
+- only execute tasks relating to patient onboarding and information retireval
+Response Format:
+- When gathering information or clarifying requirements: Respond conversationally
+- ALWAYS respond outcome of task in this JSON Schema (use only for final task outcomes):
+{format_instructions}
+"""
         ),
         ("placeholder", "{chat_history}"),
         ("human", "{query}"),
         ("placeholder", "{agent_scratchpad}"),
     ]
 ).partial(format_instructions=parser.get_format_instructions())
+
 
 # ---------- Agent (same construction pattern as your template) ----------
 agent = create_tool_calling_agent(
@@ -60,25 +75,46 @@ agent_executor = AgentExecutor(
     tools=TOOLS,
     verbose=True,
     memory=ConversationBufferMemory(memory_key="chat_history", return_messages=True),
-    max_iterations=100,
+    max_iterations=80,
 )
 
 if __name__ == "__main__":
     while True:
-        query = input("What can i help you with?\n> ").strip()
-        if not query:
-            break
-
-        result = agent_executor.invoke({"query": query})
+        query = input("\n> ").strip()
         
-        # Try to parse as JSON, if fails, treat as conversation
+        if not query or query.lower() in ['exit', 'quit', 'bye']:
+            print("Session ended.")
+            break
+        
         try:
-            structured = parser.parse(result["output"])
-            print("\n=== Result ===")
-            print(structured.json(indent=2, ensure_ascii=False))
-            if structured.status == "success":
-                break
-        except Exception:
-            # If not JSON, it's a conversation response
-            print("\n" + result["output"])
+            result = agent_executor.invoke({"query": query})
+            
+            # Try to parse as JSON first
+            try:
+                structured = parser.parse(result["output"])
+                
+                # This is a completed task with JSON output
+                print(f"\nResponse: {structured.message}")
+                
+                # Raw JSON output
+                print(f"\nJSON Output:")
+                print(structured.model_dump_json(indent=2))
+                
+                # Exit after successful task completion
+                if structured.status.lower() in ["completed", "success", "succeeded"]:
+                    print("\nTask completed successfully. Session ended.")
+                    break
+                else:
+                    print("\nTask incomplete. You can provide more information or try again.")
+                    continue
+      
+            except Exception as e:
+                # This is conversational response (gathering info)
+                print(f"\n{result['output']}")
+                # Continue the conversation - don't exit
+                continue
+                
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            print("You can try again or type 'exit' to quit.")
             continue
