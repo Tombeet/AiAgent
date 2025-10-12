@@ -236,49 +236,108 @@ def navigate_to_main_page() -> str:
 def capture_screenshot(path: str = "latest_screenshot.png") -> str:
     """Capture a screenshot of the outcome of the request as evidence."""
     p = ensure_browser()
-    p.screenshot(path=path)
-    return path
+    try:
+        # Add timeout and error handling
+        p.screenshot(path=path, timeout=30000)  # Increased from 10s to 30s
+        return path
+    except Exception as e:
+        if "timeout" in str(e).lower():
+            return f"screenshot_timeout_skipped: {path}"
+        else:
+            return f"screenshot_failed: {str(e)}"
 
 @tool 
 def validate_claim_advanced(claim: str, context: str = "") -> str:
     """
-    Advanced validation using LLM to analyze claims against actual evidence.
+    Advanced validation using vision model to analyze claims against current page state.
+    Uses the capture_screenshot tool to get current browser state for validation.
     
     Args:
         claim: The specific claim to validate
         context: Additional context about what task is being performed
     
     Returns:
-        Detailed validation result with evidence
+        Detailed validation result with visual evidence analysis
     """
     from langchain_openai import ChatOpenAI
+    import base64
     
-    # Get current page content - FIX: Use proper tool invocation
-    current_content = read_texts("")  # Pass empty string as required parameter
+    # Use the existing capture_screenshot tool
+    screenshot_path = f"validation_{hash(claim) % 10000}.png"
+    screenshot_result = capture_screenshot(screenshot_path)
     
-    # Use LLM to validate
-    validation_llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    # Check if screenshot was successful
+    if "failed" in screenshot_result or "timeout" in screenshot_result:
+        return f"VALIDATION_ERROR: {screenshot_result}"
     
-    validation_prompt = f"""
-    You are a strict fact-checker. Validate this claim against actual evidence.
+    try:
+        # Read and encode the screenshot
+        with open(screenshot_path, "rb") as image_file:
+            image_data = base64.b64encode(image_file.read()).decode()
+            
+    except Exception as e:
+        return f"VALIDATION_ERROR: Could not read screenshot: {str(e)}"
     
-    CLAIM: {claim}
-    CONTEXT: {context}
+    # Use vision-capable model for validation
+    validation_llm = ChatOpenAI(
+        model="gpt-4o",  # Vision-capable model
+        temperature=0
+    )
     
-    ACTUAL EVIDENCE (current page content):
-    {current_content}
+    validation_prompt = [
+        {
+            "role": "user", 
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"""
+You are a strict fact-checker analyzing a screenshot of an EMR system. Validate this claim against what you can actually see in the image.
+
+CLAIM: {claim}
+CONTEXT: {context}
+
+Look carefully at the screenshot and respond with EXACTLY one of these formats:
+
+VALIDATED: [Describe specific visual elements that prove the claim - e.g., "Patient name 'John Doe' visible in header", "URL shows /Patient/12345", "Success message displayed"]
+
+NOT_VALIDATED: [Explain what visual evidence is missing or contradicts the claim]
+
+Be extremely precise. Only validate if you can see clear visual evidence that supports the claim.
+Focus on:
+- Patient names in headers/titles/forms
+- URLs showing patient IDs in address bar
+- Success/error messages on the page
+- Form completion states
+- Page titles and navigation breadcrumbs
+- Any confirmation dialogs or notifications
+
+Current page URL: {ensure_browser().url}
+"""
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{image_data}"
+                    }
+                }
+            ]
+        }
+    ]
     
-    Respond with EXACTLY one of these formats:
-    
-    VALIDATED: [Quote specific text from evidence that proves the claim]
-    
-    NOT_VALIDATED: [Explain what evidence is missing to validate this claim]
-    
-    Be extremely precise. Only validate if you can quote exact matching evidence.
-    """
-    
-    result = validation_llm.invoke(validation_prompt)
-    return result.content
+    try:
+        result = validation_llm.invoke(validation_prompt)
+        
+        # Keep screenshot for debugging (comment out the deletion)
+        # try:
+        #     os.remove(screenshot_path)
+        # except:
+        #     pass
+        
+        print(f"DEBUG: Screenshot saved as: {screenshot_path}")  # Add this line
+        return result.content
+        
+    except Exception as e:
+        return f"VALIDATION_ERROR: LLM validation failed: {str(e)}"
 
 # export list for main
 #TOOLS = [nav, read_texts, click_text, fill_name, submit, get_secret, close, admin_login]
