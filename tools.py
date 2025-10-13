@@ -35,7 +35,7 @@ def close_browser():
 
 
 @tool
-def read_texts(_: str = "") -> str:
+def read_texts() -> str:
     """Return page title/url, sample of visible button/link texts, and input name/placeholders."""
     p = ensure_browser()
     btns = []
@@ -233,7 +233,7 @@ def navigate_to_main_page() -> str:
         return f"reset_failed:{str(e)}"
 
 @tool
-def capture_screenshot(path: str = "latest_screenshot.png") -> str:
+def capture_screenshot(path: str) -> str:
     """Capture a screenshot of the outcome of the request as evidence."""
     p = ensure_browser()
     try:
