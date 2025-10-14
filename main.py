@@ -105,7 +105,7 @@ if __name__ == "__main__":
                 
                 # Exit after successful task completion
                 if structured.status.lower() in ["completed", "success", "succeeded"]:
-                    print("\nTask completed successfully. Session ended.")
+                    print("\nTask completed successfully.")
                     continue
                 else:
                     print("\nTask incomplete. You can provide more information or try again.")
