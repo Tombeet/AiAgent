@@ -1,4 +1,4 @@
-# main.py code
+# main.py - Fully Autonomous Agent
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
@@ -7,117 +7,175 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain.memory import ConversationBufferMemory
 
-# Import the unified tools list from your tools.py
-from tools import TOOLS  # [nav, read_texts, click_text, fill_name, submit, get_secret, close]
+from tools import TOOLS
 
 load_dotenv()
 
-# ---------- Structured output model (Pydantic) ----------
+# Structured output model
 class AutomationResult(BaseModel):
     status: str  # "in_progress", "completed", "error"
     message: str
     tools_used: list[str]
     evidence: list[str]
     next_actions: list[str]
-    completed_steps: list[str] = []  # Track what's been done
-    data_collected: dict = {}        # Store collected user info
+    completed_steps: list[str] = []
+    data_collected: dict = {}
 
 parser = PydanticOutputParser(pydantic_object=AutomationResult)
 
-# ---------- LLM ----------
-llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
+llm = ChatOpenAI(model="gpt-4o", temperature=0.2)
 
-# ---------- Prompt (matches your agent template) ----------
-prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """Role:
-You are an Electronic Medical Record (EMR) system administrator agent responsible for executing administrative tasks within the clinic's EMR system.
+# Autonomous agent prompt
+prompt = ChatPromptTemplate.from_messages([
+    (
+        "system",
+        """You are an autonomous EMR system agent with the ability to think and adapt.
 
-Objectives:
-1) Interact with the user to understand and gather context for their request.
-2) Log in into the EMR system using your admin credentials before executing any tasks.
-3) Safely execute the required actions within the EMR system to complete the request.
-4) Validate the outcome of the task using the tool validate_claim_advanced.
-5) Based on the outcome of the validation, provide the exact information requested by the user.
+YOUR CAPABILITIES:
+You have 9 primitive tools - building blocks to accomplish ANY task:
+1. goto_url(url) - Navigate anywhere
+2. read_page() - Observe what's on the page
+3. click(target) - Click anything
+4. type_in_field(field, value) - Fill any field
+5. wait_for(condition, seconds) - Wait for loading
+6. get_secret(key) - Get credentials
+7. screenshot(filename) - Capture evidence
+8. get_current_location() - Know where you are
+9. validate_claim_advanced(claim) - Verify with AI vision
 
-Guardrails:
-- CONTEXT AWARENESS: Before taking any action, always understand your current context first. If you're unsure what's available on the current page, call read_texts() to observe the environment.
-- ADAPTIVE BEHAVIOR: After any action that might change the page state (clicks, navigation, form submissions), assess whether you need to understand the new context before proceeding.
-- FAILURE RECOVERY: If actions fails unexpectedly, pause and call read_texts() to understand why it might have failed before retrying.
-- AUTHENTICATION GATE: Do not carry out any actions until you have been authenticated into the EMR system successfully.
-- RESET STRATEGY: If you encounter repeated failures or get stuck, reset to main page and reassess your approach.
-- VALIDATION REQUIREMENT: Always validate the outcome of the task before responding to the user.
-- SECURITY: Never share your admin credentials under any circumstances.
-- SCOPE LIMITATION: Only execute tasks relating to patient onboarding and information retrieval.
+YOUR MISSION:
+Figure out workflows by OBSERVING and ADAPTING. You are NOT given pre-built workflows.
 
-Response Format:
-- When gathering information or clarifying requirements: Respond conversationally
-- ALWAYS respond outcome of task in this JSON Schema (use only for final task outcomes):
+CORE PRINCIPLES:
+
+1. OBSERVE FIRST, ACT SECOND
+   - Always call read_page() when arriving at a new page
+   - Always call read_page() after clicking something that might change the page
+   - Never assume what's on a page - always observe
+
+2. THINK STEP-BY-STEP
+   - Break complex tasks into small steps
+   - Verify each step worked before moving to the next
+   - Example workflow you should figure out:
+     
+     To login:
+     Step 1: goto_url('https://app.medplum.com/signin')
+     Step 2: read_page() to see what fields exist
+     Step 3: get_secret('MEDPLUM_USER') to get email
+     Step 4: type_in_field('email', 'the_email_value')
+     Step 5: read_page() to see if anything changed
+     Step 6: click('Next') if there's a Next button
+     Step 7: wait_for('page_load')
+     Step 8: read_page() to see the new page
+     Step 9: get_secret('MEDPLUM_PASS') to get password
+     Step 10: type_in_field('password', 'the_password_value')
+     Step 11: click('Sign in')
+     Step 12: wait_for('page_load')
+     Step 13: read_page() to verify login succeeded
+     
+     To create a patient:
+     Step 1: Ensure you're logged in
+     Step 2: goto_url('https://app.medplum.com/Patient')
+     Step 3: read_page() to see what's available
+     Step 4: Look for creation buttons (New, Create, Add)
+     Step 5: click('New...')  # Or whatever button you found
+     Step 6: wait_for('page_load')
+     Step 7: read_page() to see the form fields
+     Step 8: type_in_field('given', 'FirstName')
+     Step 9: type_in_field('family', 'LastName')
+     Step 10: Fill other fields if requested (birthDate, gender, etc)
+     Step 11: read_page() to find save button
+     Step 12: click('Save')
+     Step 13: wait_for('page_load')
+     Step 14: get_current_location() to see if URL changed to patient page
+     Step 15: screenshot('patient_created.png')
+     Step 16: validate_claim_advanced('Patient was created')
+
+3. ADAPT TO WHAT YOU SEE
+   - If a button doesn't exist, look for alternatives
+   - If a field has a different name, adapt
+   - If something fails, read_page() to understand why
+   - Learn from the page structure
+
+4. HANDLE FAILURES GRACEFULLY
+   - If click fails: read_page() to see what's actually there
+   - If field not found: read_page() to see what fields exist
+   - If stuck: goto_url() to reset and try again
+   - If repeated failures: explain what went wrong
+
+5. VALIDATE YOUR WORK
+   - After completing a task, take screenshot()
+   - Use validate_claim_advanced() to verify success
+   - Check get_current_location() to confirm state changes
+
+AUTHENTICATION:
+- You MUST login before doing any EMR tasks
+- Use get_secret() to retrieve credentials
+- Medplum uses two-step login: email first, then password
+- Never hard-code credentials
+
+RESPONSE FORMAT:
+- When gathering info or clarifying: Respond conversationally
+- When task is complete: Use JSON schema (provided below)
+
 {format_instructions}
+
+REMEMBER: You are AUTONOMOUS. Figure out the workflow by observing!
 """
-        ),
-        ("placeholder", "{chat_history}"),
-        ("human", "{query}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ]
-).partial(format_instructions=parser.get_format_instructions())
+    ),
+    ("placeholder", "{chat_history}"),
+    ("human", "{query}"),
+    ("placeholder", "{agent_scratchpad}"),
+]).partial(format_instructions=parser.get_format_instructions())
 
-
-
-# ---------- Agent (same construction pattern as your template) ----------
-agent = create_tool_calling_agent(
-    llm=llm,
-    prompt=prompt,
-    tools=TOOLS,
-)
+# Create agent
+agent = create_tool_calling_agent(llm=llm, prompt=prompt, tools=TOOLS)
 
 agent_executor = AgentExecutor(
     agent=agent,
     tools=TOOLS,
     verbose=True,
     memory=ConversationBufferMemory(memory_key="chat_history", return_messages=True),
-    max_iterations=80,
+    max_iterations=50,  # More iterations for autonomous thinking
+    max_execution_time=300,
 )
 
 if __name__ == "__main__":
+    print("\n" + "=" * 70)
+    print("🤖 AUTONOMOUS EMR AGENT")
+    print("=" * 70)
+    print("This agent figures out workflows by itself!")
+    print("Try: 'Create a patient named Jimmy Smith'")
+    print("     'Login to Medplum'")
+    print("     'Search for patients named John'")
+    print("=" * 70 + "\n")
+    
     while True:
-        query = input("\n>How can i help you> ").strip()
+        query = input("\n> How can I help you? ").strip()
         
         if not query or query.lower() in ['exit', 'quit', 'bye']:
-            print("Session ended.")
+            print("👋 Session ended.")
             break
         
         try:
             result = agent_executor.invoke({"query": query})
             
-            # Try to parse as JSON first
+            # Try to parse as structured output
             try:
                 structured = parser.parse(result["output"])
                 
-                # This is a completed task with JSON output
-                print(f"\nResponse: {structured.message}")
+                print(f"\n✅ {structured.message}")
+                print(f"\nSTATUS: {structured.status}")
+                print(f"TOOLS USED: {', '.join(structured.tools_used)}")
+                print(f"EVIDENCE: {', '.join(structured.evidence)}")
                 
-                # Raw JSON output
-                print(f"\nJSON Output:")
-                print(structured.model_dump_json(indent=2))
+                if structured.status.lower() in ["completed", "success"]:
+                    print("\n✅ Task completed!")
                 
-                # Exit after successful task completion
-                if structured.status.lower() in ["completed", "success", "succeeded"]:
-                    print("\nTask completed successfully. Session ended.")
-                    continue
-                else:
-                    print("\nTask incomplete. You can provide more information or try again.")
-                    continue
-      
-            except Exception as e:
-                # This is conversational response (gathering info)
+            except:
+                # Conversational response
                 print(f"\n{result['output']}")
-                # Continue the conversation - don't exit
-                continue
                 
         except Exception as e:
-            print(f"An error occurred: {str(e)}")
+            print(f"\n❌ Error: {str(e)}")
             print("You can try again or type 'exit' to quit.")
-            continue

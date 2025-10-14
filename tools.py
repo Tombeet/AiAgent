@@ -1,11 +1,11 @@
-# tools.py — Enhanced web-automation tools for Medplum EMR
+# tools.py — Fully Autonomous Web Automation Agent
+# Primitive tools only - agent figures out ALL workflows
 from dateutil import parser as date_parser
 import os, re, asyncio, sys
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 from langchain.tools import tool
 
-# Fix for Windows: required to allow Playwright subprocesses
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
@@ -15,45 +15,43 @@ BASE_URL = os.getenv("MEDPLUM_BASE_URL", "https://app.medplum.com")
 MEDPLUM_USER = os.getenv("MEDPLUM_USER", "")
 MEDPLUM_PASS = os.getenv("MEDPLUM_PASS", "")
 
-# Debug output
 print("=" * 60)
-print("🔧 MEDPLUM CONFIGURATION")
+print("🤖 AUTONOMOUS AGENT - PRIMITIVE TOOLS MODE")
 print("=" * 60)
 print(f"BASE_URL: {BASE_URL}")
-print(f"USER: {MEDPLUM_USER}")
-print(f"PASS: {'*' * len(MEDPLUM_PASS) if MEDPLUM_PASS else '❌ NOT SET!'}")
+print(f"Credentials: {'✅ Loaded' if MEDPLUM_USER and MEDPLUM_PASS else '❌ Missing'}")
 print("=" * 60)
 
-# ---- shared browser session ----
+# Global browser state
 _pw = _browser = _context = _page = None
-_is_authenticated = False
 
 def ensure_browser():
-    """Initialize browser with better configuration"""
+    """Initialize browser if not already running"""
     global _pw, _browser, _context, _page
     if _page:
-        return _page
+        try:
+            # Test if page is still responsive
+            _page.url
+            return _page
+        except:
+            # Page is dead, clean up and create new one
+            cleanup_browser()
     
     _pw = sync_playwright().start()
-    _browser = _pw.chromium.launch(
-        headless=False,
-        args=['--start-maximized']
-    )
-    
+    _browser = _pw.chromium.launch(headless=False, args=['--start-maximized'])
     _context = _browser.new_context(
         viewport={'width': 1920, 'height': 1080},
         user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     )
-    
     _page = _context.new_page()
     _page.set_default_timeout(30000)
     _page.set_default_navigation_timeout(60000)
-    
     return _page
 
-def close_browser_internal():
-    """Internal function to close browser - NOT a tool"""
-    global _pw, _browser, _context, _page, _is_authenticated
+
+def cleanup_browser():
+    """Clean up browser resources"""
+    global _pw, _browser, _context, _page
     try:
         if _page:
             _page.close()
@@ -63,167 +61,50 @@ def close_browser_internal():
             _browser.close()
         if _pw:
             _pw.stop()
+    except:
+        pass
     finally:
         _pw = _browser = _context = _page = None
-        _is_authenticated = False
 
 
-@tool
-def medplum_login() -> str:
-    """
-    Authenticate to Medplum using credentials from .env file.
-    Medplum uses TWO-STEP login: email then password.
-    """
-    global _is_authenticated
-    p = ensure_browser()
-    
-    if _is_authenticated:
-        return "login:already_authenticated"
-    
-    if not MEDPLUM_USER or not MEDPLUM_PASS:
-        return "login:missing_credentials"
-    
-    try:
-        print("\n🔐 Starting Medplum login (two-step)...")
-        
-        # Navigate to login
-        p.goto(f"{BASE_URL}/signin", wait_until='domcontentloaded')
-        p.wait_for_timeout(3000)
-        
-        current_url = p.url
-        print(f"   📍 URL: {current_url}")
-        
-        # Check if already logged in
-        if "/signin" not in current_url.lower():
-            _is_authenticated = True
-            print("   ✅ Already logged in!")
-            return f"login:already_logged_in:{current_url}"
-        
-        # STEP 1: Enter email and click Next
-        print("   📧 STEP 1: Entering email...")
-        
-        email_field = p.locator("input[name='email'], input[type='email']")
-        if email_field.count() == 0:
-            p.screenshot(path="login_no_email.png")
-            return "login:email_field_not_found"
-        
-        email_field.first.click()
-        email_field.first.fill(MEDPLUM_USER)
-        print(f"      Email: {MEDPLUM_USER}")
-        p.wait_for_timeout(500)
-        
-        # Click Next
-        print("   🖱️ Clicking Next...")
-        next_button = p.locator("button:has-text('Next'), button[type='submit']")
-        if next_button.count() == 0:
-            return "login:next_button_not_found"
-        
-        next_button.first.click()
-        p.wait_for_timeout(3000)
-        
-        # STEP 2: Enter password and click Sign in
-        print("   🔑 STEP 2: Entering password...")
-        
-        # Wait for password field
-        try:
-            p.wait_for_selector("input[type='password']", timeout=10000, state='visible')
-        except:
-            error = p.locator("[role='alert'], .error")
-            if error.count() > 0:
-                try:
-                    error_text = error.first.inner_text(timeout=1000)
-                    print(f"   ❌ Error: {error_text}")
-                    return f"login:email_error:{error_text}"
-                except:
-                    pass
-            p.screenshot(path="login_no_password.png")
-            return "login:password_field_not_found"
-        
-        password_field = p.locator("input[type='password']")
-        if password_field.count() == 0:
-            return "login:password_field_missing"
-        
-        password_field.first.click()
-        password_field.first.fill(MEDPLUM_PASS)
-        print(f"      Password: {'*' * len(MEDPLUM_PASS)}")
-        p.wait_for_timeout(500)
-        
-        # Click Sign in
-        print("   🖱️ Clicking Sign in...")
-        sign_in = p.locator("button:has-text('Sign in'), button:has-text('Sign In'), button[type='submit']")
-        if sign_in.count() == 0:
-            return "login:signin_button_not_found"
-        
-        sign_in.first.click()
-        
-        # Wait for login to complete
-        print("   ⏳ Waiting for login...")
-        try:
-            p.wait_for_url(lambda url: "/signin" not in url.lower(), timeout=15000)
-            p.wait_for_load_state('networkidle', timeout=5000)
-            
-            _is_authenticated = True
-            final_url = p.url
-            print(f"   ✅ Login successful!")
-            print(f"   📍 Now at: {final_url}")
-            return f"login:success:{final_url}"
-            
-        except:
-            error = p.locator("[role='alert'], .error")
-            if error.count() > 0:
-                try:
-                    error_text = error.first.inner_text(timeout=1000)
-                    print(f"   ❌ Error: {error_text}")
-                    return f"login:failed:{error_text}"
-                except:
-                    pass
-            
-            if "/signin" in p.url.lower():
-                print("   ❌ Still on signin - wrong credentials")
-                p.screenshot(path="login_failed.png")
-                return "login:failed_wrong_credentials"
-            
-            return "login:timeout"
-            
-    except Exception as e:
-        print(f"   ❌ Exception: {e}")
-        p.screenshot(path="login_exception.png")
-        return f"login:error:{str(e)}"
-
+# ============================================================================
+# PRIMITIVE TOOLS - Building blocks for ANY workflow
+# ============================================================================
 
 @tool
-def navigate_to_resource(resource_type: str, resource_id: str = "") -> str:
+def goto_url(url: str) -> str:
     """
-    Navigate directly to a Medplum resource page.
-    Examples: navigate_to_resource('Patient') or navigate_to_resource('Patient', 'abc-123')
+    Navigate to any URL. Use this to go to specific pages.
+    
+    Examples:
+        goto_url('https://app.medplum.com/signin')
+        goto_url('https://app.medplum.com/Patient')
     """
     p = ensure_browser()
-    
-    # Auto-login if needed
-    if not _is_authenticated:
-        result = medplum_login()
-        if "success" not in result and "already" not in result:
-            return f"nav:login_failed:{result}"
-    
     try:
-        url = f"{BASE_URL}/{resource_type}"
-        if resource_id:
-            url += f"/{resource_id}"
-        
+        print(f"📍 Navigating to: {url}")
         p.goto(url, wait_until='domcontentloaded')
         p.wait_for_timeout(2000)
         p.wait_for_load_state('networkidle', timeout=10000)
         
-        return f"nav:success:{p.url}"
+        final_url = p.url
+        print(f"   ✅ Now at: {final_url}")
+        return f"success:navigated_to:{final_url}"
     except Exception as e:
-        return f"nav:error:{str(e)}"
+        return f"error:{str(e)}"
 
 
 @tool
-def read_texts() -> str:
+def read_page() -> str:
     """
-    Return page title, URL, main content, buttons, and form fields.
-    Use this to understand what's currently on the page.
+    Observe the current page - see what's available.
+    Returns: page title, URL, visible text, buttons, links, and form fields.
+    
+    ALWAYS call this when:
+    - You arrive at a new page
+    - After clicking something
+    - When unsure what to do next
+    - To verify page state
     """
     p = ensure_browser()
     
@@ -231,93 +112,113 @@ def read_texts() -> str:
         title = p.title()
         url = p.url
         
-        # Get main content
+        # Get main visible content
         main_content = ""
-        for selector in ["main", "[role='main']", ".content", "#content"]:
+        for selector in ["main", "[role='main']", "body"]:
             try:
                 loc = p.locator(selector)
                 if loc.count():
-                    main_content = loc.first.inner_text(timeout=2000)[:2000]
+                    main_content = loc.first.inner_text(timeout=2000)[:1500]
                     break
             except:
                 continue
         
-        if not main_content:
-            main_content = p.locator("body").inner_text()[:2000]
-        
-        # Get buttons/links
-        btns = []
-        for el in p.locator("button, a, [role='button']").all()[:50]:
+        # Get all buttons
+        buttons = []
+        for el in p.locator("button, [role='button']").all()[:30]:
             try:
-                text = el.inner_text(timeout=150).strip()
-                if text and len(text) < 100:
-                    btns.append(text)
+                text = el.inner_text(timeout=100).strip()
+                if text and len(text) < 80:
+                    buttons.append(text)
             except:
                 pass
         
-        # Get form fields
-        inputs = []
-        for el in p.locator("input, textarea, select").all()[:50]:
+        # Get all links
+        links = []
+        for el in p.locator("a[href]").all()[:30]:
+            try:
+                text = el.inner_text(timeout=100).strip()
+                href = el.get_attribute("href") or ""
+                if text and len(text) < 80:
+                    links.append(f"{text} -> {href}")
+            except:
+                pass
+        
+        # Get all input fields
+        fields = []
+        for el in p.locator("input, textarea, select").all()[:30]:
             try:
                 name = el.get_attribute("name") or ""
                 placeholder = el.get_attribute("placeholder") or ""
                 field_type = el.get_attribute("type") or "text"
+                field_id = el.get_attribute("id") or ""
                 
-                # Try to find label
+                # Try to find associated label
                 label = ""
-                field_id = el.get_attribute("id")
                 if field_id:
                     label_el = p.locator(f"label[for='{field_id}']")
                     if label_el.count():
                         label = label_el.first.inner_text(timeout=100).strip()
                 
-                inputs.append({
+                field_info = {
                     "type": field_type,
                     "name": name,
+                    "id": field_id,
                     "placeholder": placeholder,
                     "label": label
-                })
+                }
+                fields.append(field_info)
             except:
                 pass
         
-        # Extract resource info from URL
-        resource_match = re.search(r'/([A-Z][a-zA-Z]+)/([a-f0-9-]+)', url)
-        resource_info = ""
-        if resource_match:
-            resource_info = f"\nRESOURCE: {resource_match.group(1)}/{resource_match.group(2)}"
-        
-        return f"""TITLE: {title}
-URL: {url}{resource_info}
+        return f"""PAGE OBSERVATION:
+Title: {title}
+URL: {url}
 
-MAIN_CONTENT:
+VISIBLE TEXT (first 1500 chars):
 {main_content}
 
-BUTTONS/LINKS: {btns}
+BUTTONS ({len(buttons)} found):
+{buttons}
 
-FORM_FIELDS: {inputs}
+LINKS ({len(links)} found):
+{links[:10]}
+
+FORM FIELDS ({len(fields)} found):
+{fields}
 """
     except Exception as e:
-        return f"read_error:{str(e)}"
+        return f"error_reading_page:{str(e)}"
 
 
 @tool
-def click_text(text: str) -> str:
+def click(target: str) -> str:
     """
-    Click element by visible text, aria-label, title, or placeholder.
-    Example: click_text('Save') or click_text('New Patient')
+    Click any element by visible text or selector.
+    
+    Args:
+        target: What to click - button text, link text, or CSS selector
+    
+    Examples:
+        click('Next')
+        click('Sign in')
+        click('New...')
+        click('Save')
+        click('button[type="submit"]')
     """
     p = ensure_browser()
-    safe_text = text.replace("\n", " ").replace("\r", " ").strip()
+    safe_target = target.replace("\n", " ").strip()
     
-    # Multiple selector strategies
+    print(f"🖱️ Clicking: {safe_target}")
+    
+    # Try multiple strategies
     selectors = [
-        f"button:has-text('{safe_text}')",
-        f"a:has-text('{safe_text}')",
-        f"[role='button']:has-text('{safe_text}')",
-        f"[aria-label*='{safe_text}' i]",
-        f"[title*='{safe_text}' i]",
-        f"input[placeholder*='{safe_text}' i]",
-        f"img[alt*='{safe_text}' i]",
+        f"button:has-text('{safe_target}')",
+        f"a:has-text('{safe_target}')",
+        f"[role='button']:has-text('{safe_target}')",
+        f"input[value='{safe_target}']",
+        f"[aria-label*='{safe_target}' i]",
+        safe_target,  # Direct selector
     ]
     
     for selector in selectors:
@@ -327,284 +228,253 @@ def click_text(text: str) -> str:
                 loc.first.scroll_into_view_if_needed()
                 loc.first.click(timeout=5000)
                 p.wait_for_load_state('networkidle', timeout=10000)
-                return f"click:success:{safe_text}"
+                print(f"   ✅ Clicked: {safe_target}")
+                return f"success:clicked:{safe_target}"
         except:
             continue
     
-    # Try CSS class as fallback
-    if safe_text and safe_text[0].isalpha() and not ' ' in safe_text:
-        try:
-            loc = p.locator(f".{safe_text}")
-            if loc.count():
-                loc.first.click()
-                p.wait_for_load_state('networkidle')
-                return f"click:success_class:{safe_text}"
-        except:
-            pass
-    
-    return f"click:not_found:{safe_text}"
+    print(f"   ❌ Not found: {safe_target}")
+    return f"not_found:{safe_target}"
 
 
 @tool
-def fill_field(kv: str) -> str:
+def type_in_field(field_identifier: str, value: str) -> str:
     """
-    Fill input/textarea/select by name, placeholder, or label.
-    Format: key=value
-    Example: fill_field('given name=John') or fill_field('birthDate=1990-01-15')
+    Type text into any input field.
+    
+    Args:
+        field_identifier: Field name, placeholder, label, or id
+        value: Text to type
+    
+    Examples:
+        type_in_field('email', 'admin@example.com')
+        type_in_field('password', 'secret123')
+        type_in_field('given', 'John')
+        type_in_field('family', 'Doe')
+        type_in_field('birthDate', '1990-01-15')
     """
     p = ensure_browser()
     
-    m = re.match(r"\s*(.+?)\s*=\s*(.*)\s*", kv)
-    if not m:
-        return "fill:bad_format"
+    print(f"⌨️ Typing in '{field_identifier}': {value[:20]}...")
     
-    key, value = m.group(1), m.group(2)
-    
-    # Try multiple selectors
+    # Try multiple strategies to find the field
     selectors = [
-        f"input[name='{key}']",
-        f"textarea[name='{key}']",
-        f"select[name='{key}']",
-        f"input[placeholder*='{key}' i]",
-        f"textarea[placeholder*='{key}' i]",
+        f"input[name='{field_identifier}']",
+        f"textarea[name='{field_identifier}']",
+        f"select[name='{field_identifier}']",
+        f"input[id='{field_identifier}']",
+        f"input[placeholder*='{field_identifier}' i]",
+        f"textarea[placeholder*='{field_identifier}' i]",
     ]
     
-    # Try finding by label
-    label_loc = p.locator(f"label:has-text('{key}')")
+    # Also try finding by label
+    label_loc = p.locator(f"label:has-text('{field_identifier}')")
     if label_loc.count():
         for_attr = label_loc.first.get_attribute("for")
         if for_attr:
             selectors.append(f"#{for_attr}")
     
-    loc = None
+    # Find the field
+    field = None
     for selector in selectors:
         try:
             temp = p.locator(selector)
             if temp.count():
-                loc = temp
+                field = temp
                 break
         except:
             continue
     
-    if not loc or not loc.count():
-        return f"fill:not_found:{key}"
+    if not field or not field.count():
+        print(f"   ❌ Field not found: {field_identifier}")
+        return f"field_not_found:{field_identifier}"
     
     try:
-        tag = loc.first.evaluate("e => e.tagName.toLowerCase()")
-        input_type = loc.first.get_attribute("type") or "text"
+        # Get field info
+        tag = field.first.evaluate("e => e.tagName.toLowerCase()")
+        field_type = field.first.get_attribute("type") or "text"
         
-        # Handle date inputs
-        if input_type == "date":
+        # Handle date fields specially
+        if field_type == "date":
             try:
                 parsed_date = date_parser.parse(value)
                 value = parsed_date.strftime("%Y-%m-%d")
             except:
-                return f"fill:invalid_date:{value}"
+                pass
         
         # Handle select dropdowns
         if tag == "select":
             try:
-                loc.first.select_option(label=value)
+                field.first.select_option(label=value)
             except:
-                loc.first.select_option(value=value)
-            return f"fill:success:{key}={value}"
+                field.first.select_option(value=value)
+            print(f"   ✅ Selected: {value}")
+            return f"success:selected:{field_identifier}={value}"
         
         # Handle regular inputs
-        loc.first.scroll_into_view_if_needed()
-        loc.first.click()
-        loc.first.fill(value)
+        field.first.scroll_into_view_if_needed()
+        field.first.click()
+        field.first.fill(value)
         
-        # Handle autocomplete dropdowns
+        # Check for autocomplete suggestions
         if tag in ["input", "textarea"]:
-            loc.first.focus()
-            p.wait_for_timeout(1500)
+            field.first.focus()
+            p.wait_for_timeout(1000)
             
-            # Try finding suggestions
+            # Look for suggestions dropdown
             suggestion_selectors = [
                 f"[role='option']:has-text('{value}')",
-                f"div:has-text('{value}')",
-                f".suggestion:has-text('{value}')",
-                f".dropdown-item:has-text('{value}')",
                 f"li:has-text('{value}')",
+                f".dropdown-item:has-text('{value}')",
             ]
             
             for selector in suggestion_selectors:
                 try:
                     suggestion = p.locator(selector)
                     if suggestion.count() > 0:
-                        suggestion_text = suggestion.first.inner_text()
                         suggestion.first.click()
                         p.wait_for_timeout(500)
-                        return f"fill:ok_suggestion:{suggestion_text}"
+                        print(f"   ✅ Selected suggestion")
+                        return f"success:filled_with_suggestion:{field_identifier}"
                 except:
                     continue
-            
-            return "fill:ok_no_suggestions"
         
-        return f"fill:success:{key}={value}"
+        print(f"   ✅ Typed: {value}")
+        return f"success:typed:{field_identifier}={value}"
         
     except Exception as e:
-        return f"fill:error:{str(e)}"
+        return f"error:{str(e)}"
+
+
+@tool
+def wait_for(condition: str, seconds: int = 5) -> str:
+    """
+    Wait for page to load or element to appear.
+    
+    Args:
+        condition: What to wait for - 'page_load', 'element:selector', or just wait N seconds
+        seconds: How many seconds to wait (default 5)
+    
+    Examples:
+        wait_for('page_load')
+        wait_for('element:button:has-text("Save")')
+        wait_for('network_idle')
+    """
+    p = ensure_browser()
+    
+    print(f"⏳ Waiting for: {condition} ({seconds}s)")
+    
+    try:
+        if condition == "page_load" or condition == "network_idle":
+            p.wait_for_load_state('networkidle', timeout=seconds * 1000)
+            return f"success:page_loaded"
+        
+        elif condition.startswith("element:"):
+            selector = condition.replace("element:", "")
+            p.wait_for_selector(selector, timeout=seconds * 1000, state='visible')
+            return f"success:element_appeared:{selector}"
+        
+        else:
+            # Just wait N seconds
+            p.wait_for_timeout(seconds * 1000)
+            return f"success:waited_{seconds}s"
+            
+    except PlaywrightTimeout:
+        return f"timeout:condition_not_met:{condition}"
+    except Exception as e:
+        return f"error:{str(e)}"
 
 
 @tool
 def get_secret(key: str) -> str:
-    """Return env secrets for MEDPLUM_USER or MEDPLUM_PASS."""
+    """
+    Get credentials from environment variables.
+    Only returns MEDPLUM_USER and MEDPLUM_PASS.
+    
+    Use this to get login credentials when needed.
+    
+    Examples:
+        get_secret('MEDPLUM_USER')
+        get_secret('MEDPLUM_PASS')
+    """
     key = key.strip().upper()
     if key not in {"MEDPLUM_USER", "MEDPLUM_PASS"}:
-        return "secret:not_allowed"
+        return "error:secret_not_allowed"
+    
     val = os.getenv(key, "")
-    return f"{key}={val}"
+    if not val:
+        return f"error:{key}_not_set"
+    
+    return f"success:{key}={val}"
 
 
 @tool
-def smart_search(search_term: str) -> str:
+def screenshot(filename: str = "evidence.png") -> str:
     """
-    Search using any available search mechanism on the page.
-    Example: smart_search('John Smith')
+    Capture screenshot of current page as evidence.
+    
+    Args:
+        filename: Name for the screenshot file
+    
+    Examples:
+        screenshot('patient_created.png')
+        screenshot('after_login.png')
     """
     p = ensure_browser()
     
-    search_selectors = [
-        "input[placeholder*='Search' i]",
-        "input[type='search']",
-        "input[name*='search' i]",
-        "input[aria-label*='search' i]",
-        "[role='searchbox']",
-    ]
-    
-    for selector in search_selectors:
-        try:
-            field = p.locator(selector)
-            if field.count() > 0:
-                field.first.scroll_into_view_if_needed()
-                field.first.click()
-                field.first.fill(search_term)
-                field.first.press("Enter")
-                p.wait_for_timeout(2000)
-                p.wait_for_load_state('networkidle', timeout=10000)
-                return f"search:success:{search_term}"
-        except:
-            continue
-    
-    # Fallback
     try:
-        result = fill_field(f"Search={search_term}")
-        if "ok" in result or "success" in result:
-            return f"search:fallback_success:{search_term}"
+        p.wait_for_load_state('networkidle', timeout=3000)
     except:
         pass
     
-    return f"search:failed:{search_term}"
-
-
-@tool
-def navigate_to_main_page() -> str:
-    """Navigate to Medplum home/dashboard page."""
-    p = ensure_browser()
-    
-    # Auto-login if needed
-    if not _is_authenticated:
-        result = medplum_login()
-        if "success" not in result and "already" not in result:
-            return f"nav_home:login_failed:{result}"
-    
     try:
-        # Try clicking home
-        home_selectors = [
-            "a[href='/']",
-            ".logo",
-            ".navbar-brand",
-            "[aria-label*='home' i]",
-        ]
-        
-        for selector in home_selectors:
-            try:
-                loc = p.locator(selector)
-                if loc.count():
-                    loc.first.click()
-                    p.wait_for_load_state('networkidle')
-                    return f"nav_home:success:{p.url}"
-            except:
-                continue
-        
-        # Fallback to direct navigation
-        p.goto(BASE_URL, wait_until='domcontentloaded')
-        p.wait_for_timeout(2000)
-        return f"nav_home:success_url:{p.url}"
-        
-    except Exception as e:
-        return f"nav_home:error:{str(e)}"
-
-
-@tool
-def capture_screenshot(path: str = "latest_screenshot.png") -> str:
-    """
-    Capture screenshot of the current page as evidence.
-    Example: capture_screenshot('patient_created.png')
-    """
-    p = ensure_browser()
-    
-    try:
-        # Wait for page to settle
-        try:
-            p.wait_for_load_state('networkidle', timeout=5000)
-        except:
-            pass
-        
         p.wait_for_timeout(1000)
+        p.screenshot(path=filename, timeout=30000)
         
-        # Take screenshot
-        p.screenshot(path=path, timeout=30000)
+        if os.path.exists(filename):
+            size = os.path.getsize(filename)
+            print(f"📸 Screenshot saved: {filename} ({size} bytes)")
+            return f"success:screenshot_saved:{filename}"
         
-        if os.path.exists(path):
-            size = os.path.getsize(path)
-            return f"screenshot:success:{path}:{size}bytes"
-        return f"screenshot:failed:file_not_created"
+        return f"error:screenshot_not_created"
         
-    except PlaywrightTimeout:
-        return f"screenshot:timeout:{path}"
     except Exception as e:
-        return f"screenshot:error:{str(e)}"
+        return f"error:{str(e)}"
 
 
 @tool
-def get_current_url() -> str:
-    """Get current page URL - useful for extracting resource IDs."""
+def get_current_location() -> str:
+    """
+    Get the current page URL.
+    Use this to verify where you are or extract IDs from URLs.
+    """
     p = ensure_browser()
-    return p.url
+    url = p.url
+    print(f"📍 Current location: {url}")
+    return url
 
 
 @tool
-def wait_for_element(selector: str, timeout_ms: int = 10000) -> str:
-    """
-    Wait for element to appear - useful for dynamic content.
-    Example: wait_for_element('button:has-text("Save")')
-    """
-    p = ensure_browser()
-    try:
-        p.wait_for_selector(selector, timeout=timeout_ms, state='visible')
-        return f"wait:success:{selector}"
-    except PlaywrightTimeout:
-        return f"wait:timeout:{selector}"
-    except Exception as e:
-        return f"wait:error:{str(e)}"
-
-
-@tool 
 def validate_claim_advanced(claim: str, context: str = "") -> str:
     """
-    Validate claims using vision model to analyze screenshots.
-    Example: validate_claim_advanced('Patient John Doe was created successfully')
+    Use AI vision to validate claims by analyzing a screenshot.
+    Takes a screenshot and checks if the claim is visually verified.
+    
+    Args:
+        claim: What you want to verify (e.g. 'Patient John Doe was created')
+        context: Additional context about what you're checking
+    
+    Example:
+        validate_claim_advanced('Patient Jimmy Smith was created successfully')
     """
     from langchain_openai import ChatOpenAI
     import base64
     import time
     
     screenshot_path = f"validation_{int(time.time())}.png"
-    screenshot_result = capture_screenshot(screenshot_path)
+    screenshot_result = screenshot(screenshot_path)
     
-    if "failed" in screenshot_result or "timeout" in screenshot_result:
+    if "error" in screenshot_result:
         return f"VALIDATION_ERROR: {screenshot_result}"
     
     if not os.path.exists(screenshot_path):
@@ -621,28 +491,33 @@ def validate_claim_advanced(claim: str, context: str = "") -> str:
     except Exception as e:
         return f"VALIDATION_ERROR: Could not init model: {str(e)}"
     
-    current_url = get_current_url()
+    # Get current URL directly from browser
+    try:
+        p = ensure_browser()
+        current_url = p.url
+    except:
+        current_url = "unknown"
     
     validation_prompt = [
         {
-            "role": "user", 
+            "role": "user",
             "content": [
                 {
                     "type": "text",
-                    "text": f"""You are a strict fact-checker analyzing a Medplum EMR screenshot.
+                    "text": f"""You are analyzing a screenshot from Medplum EMR system.
 
-CLAIM: {claim}
+CLAIM TO VERIFY: {claim}
 CONTEXT: {context}
 CURRENT URL: {current_url}
 
-Respond with EXACTLY:
+Analyze the screenshot carefully and respond with EXACTLY:
 
-VALIDATED: [Specific visual evidence]
+VALIDATED: [Specific visual evidence that confirms the claim]
 OR
-NOT_VALIDATED: [What's missing]
+NOT_VALIDATED: [What's missing or contradicts the claim]
 
-Look for: patient names, resource IDs in URL, success messages, form states, page titles.
-Only validate with clear visual proof.
+Look for: patient names, resource IDs in URL, success messages, form data, page titles.
+Only validate if you have clear visual proof.
 """
                 },
                 {
@@ -655,24 +530,36 @@ Only validate with clear visual proof.
     
     try:
         result = validation_llm.invoke(validation_prompt)
-        print(f"🔍 Validation screenshot: {screenshot_path}")
+        print(f"🔍 Validation complete: {screenshot_path}")
         return result.content
     except Exception as e:
         return f"VALIDATION_ERROR: Vision model failed: {str(e)}"
 
 
-# Export tools
+@tool
+def close_browser() -> str:
+    """
+    Close the browser and clean up resources.
+    Use this when finishing a task or when browser has issues.
+    """
+    cleanup_browser()
+    print("🔒 Browser closed")
+    return "success:browser_closed"
+
+
+# Export only primitive tools
 TOOLS = [
-    medplum_login,
-    navigate_to_resource,
-    read_texts,
-    click_text,
-    fill_field,
+    goto_url,
+    read_page,
+    click,
+    type_in_field,
+    wait_for,
     get_secret,
-    smart_search,
-    navigate_to_main_page,
-    capture_screenshot,
-    get_current_url,
-    wait_for_element,
+    screenshot,
+    get_current_location,
     validate_claim_advanced,
+    close_browser,  # NEW!
 ]
+
+print(f"\n✅ Loaded {len(TOOLS)} primitive tools")
+print("🤖 Agent will figure out ALL workflows autonomously!\n")
