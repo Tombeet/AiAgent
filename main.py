@@ -43,13 +43,15 @@ Objectives:
 5) Based on the outcome of the validation, provide the exact information requested by the user.
 
 Guardrails:
-- After logging in, navigate using on-page actions (e.g., clicks, buttons, forms). 
-- DO not carry out any actions until you have been authenticated into the emr system successfully.
-- Always start from the main/landing page when executing a new task.
-- If encountering repeated failures more than twice, reset to main page and use a different workflow and set of tools, do not get stuck in a loop.
-- Always validate the outcome of the task before responding to the user.
-- Never share your admin credentials under any cicumstances
-- only execute tasks relating to patient onboarding and information retireval
+- CONTEXT AWARENESS: Before taking any action, always understand your current context first. If you're unsure what's available on the current page, call read_texts() to observe the environment.
+- ADAPTIVE BEHAVIOR: After any action that might change the page state (clicks, navigation, form submissions), assess whether you need to understand the new context before proceeding.
+- FAILURE RECOVERY: If actions fails unexpectedly, pause and call read_texts() to understand why it might have failed before retrying.
+- AUTHENTICATION GATE: Do not carry out any actions until you have been authenticated into the EMR system successfully.
+- RESET STRATEGY: If you encounter repeated failures or get stuck, reset to main page and reassess your approach.
+- VALIDATION REQUIREMENT: Always validate the outcome of the task before responding to the user.
+- SECURITY: Never share your admin credentials under any circumstances.
+- SCOPE LIMITATION: Only execute tasks relating to patient onboarding and information retrieval.
+
 Response Format:
 - When gathering information or clarifying requirements: Respond conversationally
 - ALWAYS respond outcome of task in this JSON Schema (use only for final task outcomes):
@@ -81,7 +83,7 @@ agent_executor = AgentExecutor(
 
 if __name__ == "__main__":
     while True:
-        query = input("\n> ").strip()
+        query = input("\n>How can i help you> ").strip()
         
         if not query or query.lower() in ['exit', 'quit', 'bye']:
             print("Session ended.")
@@ -104,7 +106,7 @@ if __name__ == "__main__":
                 # Exit after successful task completion
                 if structured.status.lower() in ["completed", "success", "succeeded"]:
                     print("\nTask completed successfully. Session ended.")
-                    break
+                    continue
                 else:
                     print("\nTask incomplete. You can provide more information or try again.")
                     continue
