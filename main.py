@@ -1,121 +1,118 @@
-# main.py code
+# main_alternate.py - Using partial_variables approach
+import os
 from dotenv import load_dotenv
-from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain.memory import ConversationBufferMemory
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain.prompts import PromptTemplate
+from pydantic import BaseModel, Field
+from langchain.output_parsers import PydanticOutputParser
 
-# Import the unified tools list from your tools.py
-from tools import TOOLS  # [nav, read_texts, click_text, fill_name, submit, get_secret, close]
-
+# Load environment variables
 load_dotenv()
 
-# ---------- Structured output model (Pydantic) ----------
-class AutomationResult(BaseModel):
-    status: str  # "in_progress", "completed", "error"
-    message: str
-    tools_used: list[str]
-    evidence: list[str]
-    next_actions: list[str]
-    completed_steps: list[str] = []  # Track what's been done
-    data_collected: dict = {}        # Store collected user info
+# Import tools correctly
+from tools import TOOLS
 
-parser = PydanticOutputParser(pydantic_object=AutomationResult)
+# Define your output parser structure
+class AgentResponse(BaseModel):
+    """Structured response from the agent"""
+    message: str = Field(description="Main response message")
+    evidence: list[str] = Field(default_factory=list, description="Evidence collected")
+    next_actions: list[str] = Field(default_factory=list, description="Next steps")
+    completed_steps: list[str] = Field(default_factory=list, description="Completed actions")
+    data_collected: dict = Field(default_factory=dict, description="Data gathered")
 
-# ---------- LLM ----------
-llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
+# Create parser
+parser = PydanticOutputParser(pydantic_object=AgentResponse)
 
-# ---------- Prompt (matches your agent template) ----------
-prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """Role:
-You are an Electronic Medical Record (EMR) system administrator agent responsible for executing administrative tasks within the clinic's EMR system.
-
-Objectives:
-1) Interact with the user to understand and gather context for their request.
-2) Log in into the EMR system using your admin credentials before executing any tasks.
-3) Safely execute the required actions within the EMR system to complete the request.
-4) Validate the outcome of the task using the tool validate_claim_advanced.
-5) Based on the outcome of the validation, provide the exact information requested by the user.
-
-Guardrails:
-- After logging in, navigate using on-page actions (e.g., clicks, buttons, forms). 
-- DO not carry out any actions until you have been authenticated into the emr system successfully.
-- Always start from the main/landing page when executing a new task.
-- If encountering repeated failures more than twice, reset to main page and use a different workflow and set of tools, do not get stuck in a loop.
-- Always validate the outcome of the task before responding to the user.
-- Never share your admin credentials under any cicumstances
-- only execute tasks relating to patient onboarding and information retireval
-Response Format:
-- When gathering information or clarifying requirements: Respond conversationally
-- ALWAYS respond outcome of task in this JSON Schema (use only for final task outcomes):
-{format_instructions}
-"""
-        ),
-        ("placeholder", "{chat_history}"),
-        ("human", "{query}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ]
-).partial(format_instructions=parser.get_format_instructions())
-
-
-
-# ---------- Agent (same construction pattern as your template) ----------
-agent = create_tool_calling_agent(
-    llm=llm,
-    prompt=prompt,
-    tools=TOOLS,
+# Initialize LLM
+llm = ChatOpenAI(
+    model="gpt-4o",
+    temperature=0,
+    max_tokens=4000
 )
 
+# Create tool descriptions
+tool_strings = "\n".join([f"{tool.name}: {tool.description}" for tool in TOOLS])
+tool_names_str = ", ".join([tool.name for tool in TOOLS])
+
+# Proper prompt template with correct variables
+prompt_template = """You are an AI assistant that helps automate tasks in the Medplum EMR system.
+
+You have access to the following tools:
+
+{tools}
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+IMPORTANT WORKFLOW:
+1. ALWAYS start with: medplum_login()
+2. Navigate to resources: navigate_to_resource('Patient') or navigate_to_resource('Patient', 'id')
+3. Read page context: read_texts()
+4. Perform actions: click_text(), fill_field(), smart_search()
+5. Validate: validate_claim_advanced()
+6. Take evidence: capture_screenshot()
+
+Begin!
+
+Question: {input}
+Thought: {agent_scratchpad}"""
+
+# OPTION 1: Use partial_variables (cleaner)
+prompt = PromptTemplate(
+    input_variables=["input", "agent_scratchpad"],
+    partial_variables={
+        "tools": tool_strings,
+        "tool_names": tool_names_str
+    },
+    template=prompt_template,
+)
+
+# Create agent
+agent = create_react_agent(
+    llm=llm,
+    tools=TOOLS,
+    prompt=prompt
+)
+
+# Create agent executor
 agent_executor = AgentExecutor(
     agent=agent,
     tools=TOOLS,
     verbose=True,
-    memory=ConversationBufferMemory(memory_key="chat_history", return_messages=True),
+    handle_parsing_errors=True,
     max_iterations=80,
+    max_execution_time=300
 )
 
+# Test function
+def test_agent():
+    """Test the agent setup"""
+    print("=" * 60)
+    print("TESTING AGENT CONFIGURATION")
+    print("=" * 60)
+    print(f"Number of tools: {len(TOOLS)}")
+    print(f"Tool names: {[tool.name for tool in TOOLS]}")
+    print()
+    
+    try:
+        print("Testing with simple query...")
+        result = agent_executor.invoke({"input": "What tools do you have access to?"})
+        print("\n✅ Agent Response:")
+        print(result.get("output", "No output"))
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+
 if __name__ == "__main__":
-    while True:
-        query = input("\n> ").strip()
-        
-        if not query or query.lower() in ['exit', 'quit', 'bye']:
-            print("Session ended.")
-            break
-        
-        try:
-            result = agent_executor.invoke({"query": query})
-            
-            # Try to parse as JSON first
-            try:
-                structured = parser.parse(result["output"])
-                
-                # This is a completed task with JSON output
-                print(f"\nResponse: {structured.message}")
-                
-                # Raw JSON output
-                print(f"\nJSON Output:")
-                print(structured.model_dump_json(indent=2))
-                
-                # Exit after successful task completion
-                if structured.status.lower() in ["completed", "success", "succeeded"]:
-                    print("\nTask completed successfully. Session ended.")
-                    break
-                else:
-                    print("\nTask incomplete. You can provide more information or try again.")
-                    continue
-      
-            except Exception as e:
-                # This is conversational response (gathering info)
-                print(f"\n{result['output']}")
-                # Continue the conversation - don't exit
-                continue
-                
-        except Exception as e:
-            print(f"An error occurred: {str(e)}")
-            print("You can try again or type 'exit' to quit.")
-            continue
+    test_agent()
