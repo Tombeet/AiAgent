@@ -1,5 +1,5 @@
 # tools.py — small, generic web-automation tools (no Medplum-specific paths)
-
+from dateutil import parser as date_parser  # pip install python-dateutil
 import os, re, asyncio, sys
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
@@ -112,6 +112,18 @@ def fill_field(kv: str) -> str:
     if not loc.count():
         return "fill:not_found"
     
+    tag = loc.first.evaluate("e => e.tagName.toLowerCase()")
+    input_type = loc.first.get_attribute("type") or ""
+
+    # Auto-convert human-readable dates for date inputs
+    if input_type == "date":
+        try:
+            parsed_date = date_parser.parse(value)
+            value = parsed_date.strftime("%Y-%m-%d")
+        except Exception:
+            return "fill:invalid_date_format"
+
+        
     # Check if the found element is a dropdown
     if loc.first.evaluate("e => e.tagName.toLowerCase()") == "select":
         try:
