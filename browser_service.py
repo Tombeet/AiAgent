@@ -13,7 +13,7 @@ import threading
 from typing import Dict
 from main import agent_executor, parser
 
-# Session store: maps session_id to browser state (could be expanded)
+# currently not in use: Session store: maps session_id to browser state (could be expanded)
 session_lock = threading.Lock()
 session_store: Dict[str, dict] = {}
 
@@ -25,10 +25,11 @@ class AgentRequest(BaseModel):
 
 @app.post("/run_agent")
 def run_agent_endpoint(req: AgentRequest):
-    # Optionally: create a new session if not exists
+    # currently not in use: create a new session if not exists
     with session_lock:
         if req.session_id not in session_store:
             session_store[req.session_id] = {}  # Placeholder for browser/page objects if needed
+    
     # Run the agent (this will use global Playwright for now, but can be extended)
     try:
         response = agent_executor.invoke({"query": req.query})
@@ -36,11 +37,13 @@ def run_agent_endpoint(req: AgentRequest):
         # Try to parse structured output
         try:
             structured = parser.parse(output)
+            screenshot_path = getattr(structured, 'screenshot_path', None)
             return JSONResponse({
                 "status": "success",
                 "output": structured.message,
                 "raw_output": output,
                 "structured": structured.model_dump(),
+                "screenshot_path": screenshot_path
             })
         except Exception:
             return JSONResponse({
@@ -48,6 +51,7 @@ def run_agent_endpoint(req: AgentRequest):
                 "output": output,
                 "raw_output": output,
                 "structured": None,
+                
             })
     except Exception as e:
         return JSONResponse({
