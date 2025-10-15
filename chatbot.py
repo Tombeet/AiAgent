@@ -1,8 +1,25 @@
 import streamlit as st
+import re
 import os
-from main import agent_executor, parser
-from tools import capture_screenshot
+from api_client import run_agent_via_api
 
+def run_agent(query):
+    """Send query to background service and return response and evidence."""
+    try:
+        session_id = st.session_state["session_id"]
+        response = run_agent_via_api(session_id, query)
+        if response.get("status") == "success":
+            output = response.get("output", "")
+            screenshot_path = response.get("screenshot_path")  # <-- get from API response
+            return output, screenshot_path
+        else:
+            return f"❌ Agent failed: {response.get('error', 'Unknown error')}", None
+    except Exception as e:
+        import traceback
+        error_msg = f"❌ Agent failed: {str(e)}\n\n{traceback.format_exc()}"
+        return error_msg, None
+
+# Streamlit UI/front 
 st.set_page_config(page_title="AI Agent Chat", page_icon="🤖")
 st.title("🤖 Autonomous AI Agent")
 
@@ -45,71 +62,12 @@ for msg in st.session_state.messages:
 # Chat input
 user_input = st.chat_input("What can I help you with?")
 
-def run_agent(query):
-    """Run autonomous agent and capture screenshot"""
-    try:
-        # ✅ Use "query" to match the autonomous agent's prompt template
-        response = agent_executor.invoke({"query": query})
-        output = response.get("output", "")
-        
-        # Try to parse structured output
-        try:
-            structured = parser.parse(output)
-            final_output = f"""
-{structured.message}
 
-**Status:** {structured.status}
+# Generate or get a session_id for the user (per browser session)
+if "session_id" not in st.session_state:
+    import uuid
+    st.session_state["session_id"] = str(uuid.uuid4())
 
-**Tools Used:**
-{chr(10).join(['- ' + t for t in structured.tools_used])}
-
-**Evidence:**
-{chr(10).join(['- ' + e for e in structured.evidence])}
-
-**Completed Steps:**
-{chr(10).join(['- ' + s for s in structured.completed_steps])}
-
-**Data Collected:**
-{chr(10).join([f'- {k}: {v}' for k, v in structured.data_collected.items()])}
-""".strip()
-        except Exception:
-            # Not structured output - just conversational response
-            final_output = output
-        
-        # Capture screenshot using autonomous tool
-        screenshot_path = f"screenshots/screenshot_{len(st.session_state.messages)}.png"
-        os.makedirs("screenshots", exist_ok=True)
-        
-        # Take screenshot using the autonomous screenshot tool
-        try:
-            screenshot_result = capture_screenshot(screenshot_path)
-            
-            # Check if screenshot was successful
-            if "success" in screenshot_result and os.path.exists(screenshot_path):
-                result = (final_output, screenshot_path)
-            else:
-                result = (final_output, None)
-        except:
-            # Screenshot failed - that's okay
-            result = (final_output, None)
-        
-        # ⚠️ DON'T clean up browser here - let it stay alive for multi-turn conversations
-        # Browser will auto-recover if it dies (ensure_browser checks health)
-        
-        return result
-        
-    except Exception as e:
-        import traceback
-        error_msg = f"❌ Agent failed: {str(e)}\n\n{traceback.format_exc()}"
-        
-        # Only clean up browser on critical errors
-        try:
-            from tools import cleanup_browser
-            cleanup_browser()
-        except:
-            pass
-        
-        return error_msg, None
 
 # Process new input
 if user_input:
@@ -121,8 +79,22 @@ if user_input:
     # Run agent with spinner
     with st.chat_message("assistant"):
         with st.spinner("🤖 Thinking..."):
+            # Generate or get a session_id for the user (per browser session)
+            if "session_id" not in st.session_state:
+                import uuid
+                st.session_state["session_id"] = str(uuid.uuid4())
+            
+            # Send user input to agent and get response
             output, screenshot_path = run_agent(user_input)
-        
+            
+            # Try to extract screenshot path from Markdown if not returned directly
+            if not screenshot_path:
+                m = re.search(r'!\[.*?\]\((.*?)\)', output)
+                if m:
+                    possible_path = m.group(1)
+                    if os.path.exists(possible_path):
+                        screenshot_path = possible_path
+
         # Display response
         st.markdown(output)
         

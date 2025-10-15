@@ -1,0 +1,11 @@
+# requirements-service.txt
+# Requirements for the background browser service
+fastapi
+uvicorn
+requests
+# (plus your existing requirements)
+python-dotenv
+pydantic
+langchain
+langchain-openai
+playwright

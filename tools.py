@@ -11,7 +11,7 @@ if sys.platform.startswith("win"):
 
 load_dotenv()
 
-BASE_URL = "http://localhost:3000"  # Add this near the top with other configurations
+BASE_URL = "https://app.medplum.com/"  # Add this near the top with other configurations
 
 # ---- shared browser session ----
 _pw = _browser = _page = None
