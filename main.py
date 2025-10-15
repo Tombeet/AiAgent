@@ -21,7 +21,7 @@ class AutomationResult(BaseModel):
     next_actions: list[str]
     completed_steps: list[str] = []  # Track what's been done
     data_collected: dict = {}        # Store collected user info
-
+    screenshot_path: str = None
 parser = PydanticOutputParser(pydantic_object=AutomationResult)
 
 # ---------- LLM ----------
