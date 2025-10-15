@@ -93,8 +93,8 @@ def goto_url(url: str) -> str:
         goto_url('https://app.medplum.com/signin')
         goto_url('https://app.medplum.com/Patient')
     """
-    p = ensure_browser()
     try:
+        p = ensure_browser()
         print(f"📍 Navigating to: {url}")
         p.goto(url, wait_until='domcontentloaded')
         p.wait_for_timeout(2000)
@@ -104,7 +104,17 @@ def goto_url(url: str) -> str:
         print(f"   ✅ Now at: {final_url}")
         return f"success:navigated_to:{final_url}"
     except Exception as e:
-        return f"error:{str(e)}"
+        error_msg = f"error:{str(e)}"
+        print(f"   ❌ Error: {error_msg}")
+        # Force cleanup on critical errors
+        if "thread" in str(e).lower() or "closed" in str(e).lower():
+            try:
+                cleanup_browser()
+                global _pw, _browser, _context, _page
+                _pw = _browser = _context = _page = None
+            except:
+                pass
+        return error_msg
 
 
 @tool
@@ -119,9 +129,9 @@ def read_page() -> str:
     - When unsure what to do next
     - To verify page state
     """
-    p = ensure_browser()
-    
     try:
+        p = ensure_browser()
+        
         title = p.title()
         url = p.url
         
@@ -201,7 +211,16 @@ FORM FIELDS ({len(fields)} found):
 {fields}
 """
     except Exception as e:
-        return f"error_reading_page:{str(e)}"
+        error_msg = f"error_reading_page:{str(e)}"
+        # Force cleanup on thread errors
+        if "thread" in str(e).lower() or "closed" in str(e).lower():
+            try:
+                cleanup_browser()
+                global _pw, _browser, _context, _page
+                _pw = _browser = _context = _page = None
+            except:
+                pass
+        return error_msg
 
 
 @tool
