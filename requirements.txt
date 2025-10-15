@@ -1,7 +1,11 @@
-# requirements.txt (safe, cross-version)
+# requirements.txt
 python-dotenv
 playwright
 langchain
 langchain-openai
 openai
 streamlit
+fastapi
+uvicorn
+requests
+pydantic
