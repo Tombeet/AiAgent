@@ -33,20 +33,33 @@ def ensure_browser():
             # Test if page is still responsive
             _page.url
             return _page
-        except:
-            # Page is dead, clean up and create new one
-            cleanup_browser()
+        except Exception as e:
+            # Page is dead, force full cleanup
+            print(f"⚠️ Browser dead ({type(e).__name__}), creating new one...")
+            try:
+                cleanup_browser()
+            except:
+                pass
+            # Force reset globals even if cleanup fails
+            _pw = _browser = _context = _page = None
     
-    _pw = sync_playwright().start()
-    _browser = _pw.chromium.launch(headless=False, args=['--start-maximized'])
-    _context = _browser.new_context(
-        viewport={'width': 1920, 'height': 1080},
-        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    )
-    _page = _context.new_page()
-    _page.set_default_timeout(30000)
-    _page.set_default_navigation_timeout(60000)
-    return _page
+    # Create fresh browser
+    print("🌐 Starting new browser...")
+    try:
+        _pw = sync_playwright().start()
+        _browser = _pw.chromium.launch(headless=False, args=['--start-maximized'])
+        _context = _browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        )
+        _page = _context.new_page()
+        _page.set_default_timeout(30000)
+        _page.set_default_navigation_timeout(60000)
+        print("✅ Browser ready!")
+        return _page
+    except Exception as e:
+        print(f"❌ Failed to create browser: {e}")
+        raise
 
 
 def cleanup_browser():
