@@ -3,5 +3,5 @@
 
 how to run?
 1.pip install -r requirements.txt
-2.in terminal run command "python main.py"
-3.interact/give input in terminal
+2.in terminal run command "browser_service.py" to start backend running
+3.in seperate terminal run command "python -m streamlit run chatbot.py" or "streamlit run chatbot.py"
