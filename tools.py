@@ -146,7 +146,7 @@ def fill_field(kv: str) -> str:
                         return f"fill:ok_suggestion_selected:{suggestion_text}"
                     except Exception:
                         continue
-            return "fill:ok_but_no_suggestions"
+            return "fill:ok"
         return "fill:ok"
     except Exception as e:
         return recover_on_failure("fill_field", e)
@@ -227,11 +227,30 @@ def navigate_to_main_page() -> str:
 
 @tool
 def capture_screenshot(path: str) -> str:
-    """Capture a screenshot of the outcome of the request as evidence."""
+    """Capture a screenshot of the outcome of the request as evidence.
+    Saves to screenshots/ directory and waits for the page to stabilize."""
     try:
+        import os
         p = ensure_browser()
-        p.screenshot(path=path, timeout=20000)  # Reduced timeout
-        return path
+        screenshots_dir = "screenshots"
+        os.makedirs(screenshots_dir, exist_ok=True)
+
+        filename = os.path.basename(path)
+        full_path = os.path.join(screenshots_dir, filename)
+
+        # Wait until the page is fully loaded and stable
+        try:
+            p.wait_for_load_state("networkidle", timeout=10000)
+        except Exception:
+            pass  # If it fails, we still try to capture
+
+        # Small delay to ensure UI rendered (especially in headless mode)
+        p.wait_for_timeout(1000)
+
+        # Capture screenshot
+        p.screenshot(path=full_path, full_page=True, timeout=60000)
+        return full_path
+
     except Exception as e:
         if "timeout" in str(e).lower():
             return f"screenshot_timeout_skipped: {path}"
@@ -239,35 +258,40 @@ def capture_screenshot(path: str) -> str:
             return recover_on_failure("capture_screenshot", e)
 
 @tool 
-def validate_claim_advanced(claim: str, context: str = "") -> str:
+def validate_claim_advanced(claim: str, context: str = "") -> dict:
     """
     Advanced validation using vision model to analyze claims against current page state.
     Uses the capture_screenshot tool to get current browser state for validation.
-    Args:
-        claim: The specific claim to validate
-        context: Additional context about what task is being performed
-    Returns:
-        Detailed validation result with visual evidence analysis
+    Returns a dict with validation result and screenshot_path for frontend display.
     """
     try:
         from langchain_openai import ChatOpenAI
         import base64
-        screenshot_path = f"validation_{hash(claim) % 10000}.png"
+        screenshot_filename = f"validation_{hash(claim) % 10000}.png"
+        screenshot_path = os.path.join("screenshots", screenshot_filename)
         screenshot_result = capture_screenshot(screenshot_path)
         if "failed" in screenshot_result or "timeout" in screenshot_result:
-            return f"VALIDATION_ERROR: {screenshot_result}"
+            return {
+                "status": "error",
+                "message": f"VALIDATION_ERROR: {screenshot_result}",
+                "screenshot_path": screenshot_path
+            }
         try:
             with open(screenshot_path, "rb") as image_file:
                 image_data = base64.b64encode(image_file.read()).decode()
         except Exception as e:
-            return f"VALIDATION_ERROR: Could not read screenshot: {str(e)}"
+            return {
+                "status": "error",
+                "message": f"VALIDATION_ERROR: Could not read screenshot: {str(e)}",
+                "screenshot_path": screenshot_path
+            }
         validation_llm = ChatOpenAI(
             model="gpt-4o",
             temperature=0
         )
         validation_prompt = [
             {
-                "role": "user", 
+                "role": "user",
                 "content": [
                     {
                         "type": "text",
@@ -307,11 +331,23 @@ Current page URL: {ensure_browser().url}
         try:
             result = validation_llm.invoke(validation_prompt)
             print(f"DEBUG: Screenshot saved as: {screenshot_path}")
-            return result.content
+            return {
+                "status": "success",
+                "message": result.content,
+                "screenshot_path": screenshot_path
+            }
         except Exception as e:
-            return f"VALIDATION_ERROR: LLM validation failed: {str(e)}"
+            return {
+                "status": "error",
+                "message": f"VALIDATION_ERROR: LLM validation failed: {str(e)}",
+                "screenshot_path": screenshot_path
+            }
     except Exception as e:
-        return recover_on_failure("validate_claim_advanced", e)
+        return {
+            "status": "error",
+            "message": recover_on_failure("validate_claim_advanced", e),
+            "screenshot_path": None
+        }
 
 # export list for main
 TOOLS = [read_texts, click_text, fill_field, get_secret, smart_search, navigate_to_main_page, capture_screenshot, validate_claim_advanced]
