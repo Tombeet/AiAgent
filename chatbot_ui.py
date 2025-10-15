@@ -6,7 +6,7 @@ from tools import screenshot  # Changed from capture_screenshot
 st.set_page_config(page_title="AI Agent Chat", page_icon="🤖")
 st.title("🤖 Autonomous AI Agent")
 
-# Sidebar with controls
+# Sidebar with controls and helpful prompts
 with st.sidebar:
     st.header("Controls")
     
@@ -19,6 +19,86 @@ with st.sidebar:
             st.error(f"Error closing browser: {e}")
     
     st.markdown("---")
+    
+    st.markdown("### 💡 Quick Tips")
+    
+    with st.expander("📋 Creating a Patient", expanded=False):
+        st.markdown("""
+        **Provide all information at once:**
+        
+        ```
+        Create patient John Doe
+        Born: 1990-03-15
+        Gender: Male
+        Phone: +65 9123 4567
+        Email: john@example.com
+        ```
+        
+        **Required:**
+        - Full name
+        - Date of birth (YYYY-MM-DD)
+        - Gender
+        
+        **Optional:**
+        - Phone, Email
+        """)
+    
+    with st.expander("📅 Booking Appointment", expanded=False):
+        st.markdown("""
+        **Provide all information at once:**
+        
+        ```
+        Book appointment for Sarah Doe
+        Date: 2025-12-29 at 3:30 PM
+        Duration: 1 hour
+        Reason: Annual checkup
+        ```
+        
+        **Required:**
+        - Patient name or ID
+        - Date and time
+        - Duration or end time
+        
+        **Optional:**
+        - Reason, Doctor name
+        """)
+    
+    with st.expander("🔍 Finding Patients", expanded=False):
+        st.markdown("""
+        **Provide at least one identifier:**
+        
+        ```
+        Find patient named John Doe
+        ```
+        or
+        ```
+        Search for patient ID: abc-123
+        ```
+        or
+        ```
+        Find patient with DOB 1990-03-15
+        ```
+        
+        **Need at least one:**
+        - Name, Patient ID, DOB, Phone, or Email
+        """)
+    
+    with st.expander("✏️ Updating Info", expanded=False):
+        st.markdown("""
+        **Provide complete update details:**
+        
+        ```
+        Update phone number for John Doe
+        New number: +65 8888 9999
+        ```
+        
+        **Required:**
+        - Patient name or ID
+        - Field to update
+        - New value
+        """)
+    
+    st.markdown("---")
     st.markdown("### About")
     st.markdown("""
     This is a **fully autonomous agent** that:
@@ -27,7 +107,7 @@ with st.sidebar:
     - 🔄 Handles multi-turn conversations
     - 📸 Captures evidence
     
-    The browser stays open across messages for faster responses.
+    **Pro tip:** Provide complete information in your first message to get faster results!
     """)
 
 if "messages" not in st.session_state:
@@ -43,7 +123,9 @@ for msg in st.session_state.messages:
                 st.image(msg["screenshot"], caption="Agent Evidence", use_container_width=True)
 
 # Chat input
-user_input = st.chat_input("What can I help you with?")
+user_input = st.chat_input(
+    "💬 Try: 'Create patient John Doe, born 1990-03-15, male' or 'Book appointment for Sarah on 2025-12-29 at 3pm'"
+)
 
 def run_agent(query):
     """Run autonomous agent and capture screenshot"""
