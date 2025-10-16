@@ -6,11 +6,11 @@ services:
       - .env
     ports:
       - "8000:8000"
-    volumes:
-      - ./screenshots:/app/screenshots     # shared host dir
-    shm_size: "1g"                          # chromium stability
+    shm_size: "1g"
     environment:
-      - HEADLESS=1                          # run chrome headless in Docker
+      - HEADLESS=1
+    volumes:
+      - ./screenshots:/app/screenshots   # <--- shared volume
 
   frontend:
     image: edenlee6473/aiagent-frontend:latest
@@ -18,8 +18,5 @@ services:
       - "8501:8501"
     depends_on:
       - backend
-    environment:
-      - API_URL=http://backend:8000/run_agent
-      - SCREENSHOTS_DIR=/app/screenshots    # tell Streamlit where they live
     volumes:
-      - ./screenshots:/app/screenshots      # same mountpoint as backend
+      - ./screenshots:/app/screenshots   # <--- shared volume

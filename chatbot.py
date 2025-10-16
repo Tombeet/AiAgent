@@ -12,6 +12,10 @@ def run_agent(query):
         if response.get("status") == "success":  # If the backend responded with success
             output = response.get("output", "")  # Get the output message from the response
             screenshot_path = response.get("screenshot_path")  # Get the screenshot path if provided
+            # If screenshot_path is a filename, build the full path
+            if screenshot_path and not os.path.exists(screenshot_path):
+                filename = os.path.basename(screenshot_path)
+                screenshot_path = f"/app/screenshots/{filename}"
             return output, screenshot_path  # Return both output and screenshot path
         else:
             # If the backend returned an error, return an error message
@@ -35,12 +39,10 @@ if "messages" not in st.session_state:
 
 # Display the chat history (all previous messages)
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):  # Display message in a chat bubble (user or assistant)
-        st.markdown(msg["content"])  # Show the message content
-        # If the message is from the assistant and has a screenshot, display the image
-        if msg["role"] == "assistant" and "screenshot" in msg:
-            if os.path.exists(msg["screenshot"]):
-                st.image(msg["screenshot"], caption="Agent Evidence", use_container_width=True)
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+        if msg["role"] == "assistant" and "screenshot" in msg and msg["screenshot"]:
+            st.image(msg["screenshot"], caption="Agent Evidence", use_container_width=True)
 
 # Show a chat input box at the bottom for the user to type a message
 user_input = st.chat_input("What can I help you with?")
@@ -69,17 +71,19 @@ if user_input:
                 m = re.search(r'!\[.*?\]\((.*?)\)', output)
                 if m:
                     possible_path = m.group(1)
-                    if os.path.exists(possible_path):
-                        screenshot_path = possible_path
+                    filename = os.path.basename(possible_path)
+                    shared_path = f"/app/screenshots/{filename}"
+                    if os.path.exists(shared_path):
+                        screenshot_path = shared_path
 
         # Display the agent's response in the assistant chat bubble
         st.markdown(output)
         
         # If a screenshot exists, display it and save the message with screenshot
-        if screenshot_path and os.path.exists(screenshot_path):
+        if screenshot_path:
             st.image(screenshot_path, caption="Agent Evidence", use_container_width=True)
             st.session_state.messages.append({
-                "role": "assistant", 
+                "role": "assistant",
                 "content": output,
                 "screenshot": screenshot_path
             })

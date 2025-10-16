@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install playwright && playwright install --with-deps
 
 COPY browser_service.py main.py tools.py ./
-COPY screenshots ./screenshots
+RUN mkdir -p /app/screenshots       
 
 EXPOSE 8000
 
