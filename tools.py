@@ -106,9 +106,10 @@ async def read_texts() -> str:
 
 
 @tool
-async def click_text(text: str) -> str:
+async def click_text(text: str) -> dict:
     """
     Click a button/link/icon/input by visible text, aria-label, title, placeholder, alt, or CSS class (case-insensitive substring).
+    After completion, returns both the click result and a fresh observation via read_texts.
     """
     try:
         p = await ensure_browser()
@@ -128,38 +129,46 @@ async def click_text(text: str) -> str:
         if await loc.count() > 0:
             await loc.first.click()
             await p.wait_for_load_state('networkidle', timeout=7000)
-            return "click:ok"
+            observation = await read_texts.ainvoke({})
+            return {"act_result": "click:ok", "observation": observation}
 
         if safe_text and not safe_text[0].isdigit() and not safe_text.startswith('-'):
             icon_loc = p.locator(f".{safe_text}")
             if await icon_loc.count() > 0:
                 await icon_loc.first.click()
                 await p.wait_for_load_state('networkidle', timeout=7000)
-                return "click:ok"
+                observation = await read_texts.ainvoke({})
+                return {"act_result": "click:ok", "observation": observation}
 
-        return "click:not_found"
+        observation = await read_texts.ainvoke({})
+        return {"act_result": "click:not_found", "observation": observation}
     except Exception as e:
-        return await recover_on_failure("click_text", e)
+        observation = await read_texts.ainvoke({})
+        return {"act_result": await recover_on_failure("click_text", e), "observation": observation}
 
-
+'''
 @tool
-async def fill_field(kv: str) -> str:
+async def fill_field(kv: str) -> dict:
     """
     Fill an input/textarea/select by name or placeholder.
     Format: key=value (e.g., email=alice@example.com or placeholder=Search=John).
+    After completion, returns both the fill result and a fresh observation via read_texts.
     """
     try:
         p = await ensure_browser()
         m = re.match(r"\s*(.+?)\s*=\s*(.*)\s*", kv)
         if not m:
-            return "fill:bad_format"
+            observation = await read_texts.ainvoke({})
+            return {"act_result": "fill:bad_format", "observation": observation}
+
         key, value = m.group(1), m.group(2)
 
         loc = p.locator(f"input[name='{key}'], textarea[name='{key}'], select[name='{key}']")
         if await loc.count() == 0:
             loc = p.locator(f"input[placeholder='{key}'], textarea[placeholder='{key}']")
         if await loc.count() == 0:
-            return "fill:not_found"
+            observation = await read_texts.ainvoke({})
+            return {"act_result": "fill:not_found", "observation": observation}
 
         tag = await loc.first.evaluate("e => e.tagName.toLowerCase()")
         if tag == "select":
@@ -167,7 +176,8 @@ async def fill_field(kv: str) -> str:
                 await loc.first.select_option(label=value)
             except Exception:
                 await loc.first.select_option(value)
-            return "fill:ok"
+            observation = await read_texts.ainvoke({})
+            return {"act_result": "fill:ok", "observation": observation}
 
         await loc.first.fill(value)
         await loc.first.focus()
@@ -188,13 +198,126 @@ async def fill_field(kv: str) -> str:
                     suggestion_text = await suggestion_loc.first.inner_text()
                     await suggestion_loc.first.click()
                     await p.wait_for_timeout(300)
-                    return f"fill:ok_suggestion_selected:{suggestion_text}"
+                    observation = await read_texts.ainvoke({})
+                    return {
+                        "act_result": f"fill:ok_suggestion_selected:{suggestion_text}",
+                        "observation": observation,
+                    }
                 except Exception:
                     continue
 
-        return "fill:ok"
+        observation = await read_texts.ainvoke({})
+        return {"act_result": "fill:ok", "observation": observation}
+
     except Exception as e:
-        return await recover_on_failure("fill_field", e)
+        observation = await read_texts.ainvoke({})
+        return {
+            "act_result": await recover_on_failure("fill_field", e),
+            "observation": observation,
+        }
+'''
+
+@tool
+async def fill_field(kv: str) -> dict:
+    """
+    Fill an input/textarea/select by name or placeholder.
+    Supported formats:
+      - key=value                        (e.g., email=alice@example.com or Value=John)
+      - placeholder=Value=John           (explicit placeholder targeting)
+    After completion, returns both the fill result and a fresh observation via read_texts.
+    """
+    try:
+        p = await ensure_browser()
+
+        # Parse "key=value"
+        m = re.match(r"\s*(.+?)\s*=\s*(.*)\s*", kv)
+        if not m:
+            observation = await read_texts.ainvoke({})
+            return {"act_result": "fill:bad_format", "observation": observation}
+
+        key, value = m.group(1), m.group(2)
+
+        # Optional "placeholder mode": placeholder=Value=foo
+        if key and key.strip().lower() in ("placeholder", "ph"):
+            if "=" in value:
+                ph_text, real = value.split("=", 1)
+                key, value = ph_text, real
+            # if no "=", treat as bad format to avoid ambiguity
+            else:
+                observation = await read_texts.ainvoke({})
+                return {"act_result": "fill:bad_format", "observation": observation}
+
+        # Build locator: name exact -> placeholder exact -> placeholder contains
+        loc = p.locator(f"input[name='{key}'], textarea[name='{key}'], select[name='{key}']")
+        if await loc.count() == 0:
+            loc = p.locator(f"input[placeholder='{key}'], textarea[placeholder='{key}']")
+        if await loc.count() == 0:
+            # contains-match for robustness (minimal added fallback)
+            loc = p.locator(f"input[placeholder*='{key}'], textarea[placeholder*='{key}']")
+
+        count = await loc.count()
+        if count == 0:
+            observation = await read_texts.ainvoke({})
+            return {"act_result": "fill:not_found", "observation": observation}
+
+        # Adaptive target: if one match use first; if multiple, prefer last (newly added rows)
+        target = loc.first if count == 1 else loc.nth(count - 1)
+
+        # Brief wait for visibility (helps right after "Add ..." actions)
+        try:
+            await target.wait_for(state="visible", timeout=3000)
+        except Exception:
+            pass
+
+        # Select vs text fill
+        tag = await target.evaluate("e => e.tagName.toLowerCase()")
+        if tag == "select":
+            try:
+                await target.select_option(label=value)
+            except Exception:
+                await target.select_option(value)
+            observation = await read_texts.ainvoke({})
+            return {"act_result": "fill:ok", "observation": observation}
+
+        # Fill text-like inputs / textarea
+        await target.fill(value)
+        await target.focus()
+        await p.wait_for_timeout(700)
+
+        # Optional suggestion pickers
+        suggestion_selectors = [
+            f"div:has-text('{value}')",
+            f"[role='option']:has-text('{value}')",
+            f".suggestion:has-text('{value}')",
+            f".dropdown-item:has-text('{value}')",
+            f"li:has-text('{value}')",
+            f".autocomplete-suggestion:has-text('{value}')",
+        ]
+        for selector in suggestion_selectors:
+            suggestion_loc = p.locator(selector)
+            if await suggestion_loc.count() > 0:
+                try:
+                    suggestion_text = await suggestion_loc.first.inner_text()
+                    await suggestion_loc.first.click()
+                    await p.wait_for_timeout(300)
+                    observation = await read_texts.ainvoke({})
+                    return {
+                        "act_result": f"fill:ok_suggestion_selected:{suggestion_text}",
+                        "observation": observation,
+                    }
+                except Exception:
+                    continue
+
+        # Normal success
+        observation = await read_texts.ainvoke({})
+        return {"act_result": "fill:ok", "observation": observation}
+
+    except Exception as e:
+        observation = await read_texts.ainvoke({})
+        return {
+            "act_result": await recover_on_failure("fill_field", e),
+            "observation": observation,
+        }
 
 
 @tool
@@ -247,8 +370,11 @@ async def smart_search(search_term: str) -> str:
 
 
 @tool
-async def navigate_to_main_page() -> str:
-    """Navigate to main page or reset location to main/landing page before starting a new task."""
+async def navigate_to_main_page() -> dict:
+    """
+    Navigate to main page or reset location to main/landing page before starting a new task.
+    After completion, returns both the navigation result and a fresh observation via read_texts.
+    """
     try:
         p = await ensure_browser()
         home_selectors = [
@@ -263,7 +389,8 @@ async def navigate_to_main_page() -> str:
                 if await loc.count() > 0:
                     await loc.first.click()
                     await p.wait_for_load_state('networkidle', timeout=7000)
-                    return f"reset_via_click:{p.url}"
+                    observation = await read_texts.ainvoke({})
+                    return {"act_result": f"reset_via_click:{p.url}", "observation": observation}
             except Exception:
                 continue
 
@@ -271,11 +398,14 @@ async def navigate_to_main_page() -> str:
             await p.goto(BASE_URL)
             await p.wait_for_load_state('networkidle', timeout=7000)
             await p.wait_for_timeout(1000)
-            return f"reset_via_base_url:{p.url}"
+            observation = await read_texts.ainvoke({})
+            return {"act_result": f"reset_via_base_url:{p.url}", "observation": observation}
         except Exception as e:
-            return f"reset_failed:{str(e)}"
+            observation = await read_texts.ainvoke({})
+            return {"act_result": f"reset_failed:{str(e)}", "observation": observation}
     except Exception as e:
-        return await recover_on_failure("navigate_to_main_page", e)
+        observation = await read_texts.ainvoke({})
+        return {"act_result": await recover_on_failure("navigate_to_main_page", e), "observation": observation}
 
 
 @tool
