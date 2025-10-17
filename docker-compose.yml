@@ -1,7 +1,7 @@
 version: "3.8"
 services:
   backend:
-    image: edenlee6473/aiagent-backend:latest
+    image: edenlee6473/ai-agent:BEv2
     env_file:
       - .env
     ports:
@@ -13,10 +13,12 @@ services:
       - ./screenshots:/app/screenshots   # <--- shared volume
 
   frontend:
-    image: edenlee6473/aiagent-frontend:latest
+    image: edenlee6473/ai-agent:FEv2
     ports:
       - "8501:8501"
     depends_on:
       - backend
     volumes:
       - ./screenshots:/app/screenshots   # <--- shared volume
+    environment:
+      - API_BASE_URL=http://backend:8000

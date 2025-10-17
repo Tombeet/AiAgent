@@ -3,6 +3,9 @@ import re  # Regular expressions for parsing output
 import os  # OS operations, e.g., checking if screenshot files exist
 from api_client import run_agent_via_api  # Function to send user queries to the backend agent
 
+# --- NEW: Get API_BASE_URL for building image URLs ---
+API_BASE_URL = os.environ.get("API_BASE_URL", "").rstrip("/")  # MODIFIED
+
 # Function to send a user query to the backend agent and return the response and screenshot path
 def run_agent(query):
     """Send query to background service and return response and evidence."""
@@ -12,10 +15,9 @@ def run_agent(query):
         if response.get("status") == "success":  # If the backend responded with success
             output = response.get("output", "")  # Get the output message from the response
             screenshot_path = response.get("screenshot_path")  # Get the screenshot path if provided
-            # If screenshot_path is a filename, build the full path
-            if screenshot_path and not os.path.exists(screenshot_path):
-                filename = os.path.basename(screenshot_path)
-                screenshot_path = f"/app/screenshots/{filename}"
+            # MODIFIED: If screenshot_path is a relative URL, build the full URL
+            if screenshot_path and not screenshot_path.startswith("http"):
+                screenshot_path = f"{API_BASE_URL}{screenshot_path}"
             return output, screenshot_path  # Return both output and screenshot path
         else:
             # If the backend returned an error, return an error message
@@ -66,15 +68,14 @@ if user_input:
             # Send the user input to the backend agent and get the response and screenshot path
             output, screenshot_path = run_agent(user_input)
             
-            # If no screenshot path was returned, try to extract it from Markdown image links in the output
+            # MODIFIED: If no screenshot path, try to extract from Markdown and build full URL
             if not screenshot_path:
                 m = re.search(r'!\[.*?\]\((.*?)\)', output)
                 if m:
                     possible_path = m.group(1)
                     filename = os.path.basename(possible_path)
-                    shared_path = f"/app/screenshots/{filename}"
-                    if os.path.exists(shared_path):
-                        screenshot_path = shared_path
+                    # MODIFIED: Build full URL for image
+                    screenshot_path = f"{API_BASE_URL}/api/screenshots/{filename}"
 
         # Display the agent's response in the assistant chat bubble
         st.markdown(output)

@@ -15,16 +15,20 @@ session_store: Dict[str, dict] = {}
 
 app = FastAPI()
 
-# 👇 serve /screenshots folder via HTTP
-if not os.path.exists("screenshots"):
-    os.makedirs("screenshots")
-app.mount("/screenshots", StaticFiles(directory="screenshots"), name="screenshots")
+# --- MODIFIED: Serve /app/screenshots at /api/screenshots ---
+SCREENSHOTS_DIR = "/app/screenshots"  # MODIFIED: Use absolute path for EFS mount
+
+if not os.path.exists(SCREENSHOTS_DIR):
+    os.makedirs(SCREENSHOTS_DIR)
+# MODIFIED: Mount at /api/screenshots
+app.mount("/api/screenshots", StaticFiles(directory=SCREENSHOTS_DIR), name="screenshots")
 
 class AgentRequest(BaseModel):
     session_id: str
     query: str
 
-@app.post("/run_agent")
+# MODIFIED: Route is now /api/run_agent
+@app.post("/api/run_agent")
 async def run_agent_endpoint(req: AgentRequest, request: Request):
     with session_lock:
         if req.session_id not in session_store:
@@ -38,11 +42,10 @@ async def run_agent_endpoint(req: AgentRequest, request: Request):
             structured = parser.parse(output)
             screenshot_path = getattr(structured, 'screenshot_path', None)
 
-            # 👇 dynamically detect public URL based on the incoming request
+            # MODIFIED: Always use /api/screenshots/<filename> for public URL
             if screenshot_path and os.path.exists(screenshot_path):
                 filename = os.path.basename(screenshot_path)
-                # Instead of returning a public URL, just return the filename
-                screenshot_url = f"/app/screenshots/{filename}"
+                screenshot_url = f"/api/screenshots/{filename}"  # MODIFIED
             else:
                 screenshot_url = None
 
