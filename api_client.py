@@ -6,8 +6,8 @@ import requests
 from urllib.parse import urljoin
 
 # MODIFIED: API_BASE_URL is required and used for all API calls
-API_BASE_URL = os.environ["API_BASE_URL"].rstrip("/")
-
+#API_BASE_URL = os.environ["API_BASE_URL"].rstrip("/")
+API_BASE_URL = "http://localhost:8000"
 _session = requests.Session()
 
 def run_agent_via_api(session_id: str, query: str):
