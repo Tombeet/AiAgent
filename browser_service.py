@@ -16,8 +16,8 @@ session_store: Dict[str, dict] = {}
 app = FastAPI()
 
 # --- MODIFIED: Serve /app/screenshots at /api/screenshots ---
-#SCREENSHOTS_DIR = "/app/screenshots"  # MODIFIED: Use absolute path for EFS mount
-SCREENSHOTS_DIR = "C:/Users/edenl/Documents/AiAgent/screenshots"
+SCREENSHOTS_DIR = "/app/screenshots"  # MODIFIED: Use absolute path for EFS mount
+#SCREENSHOTS_DIR = "C:/Users/edenl/Documents/AiAgent/screenshots"
 if not os.path.exists(SCREENSHOTS_DIR):
     os.makedirs(SCREENSHOTS_DIR)
 # MODIFIED: Mount at /api/screenshots
