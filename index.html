@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Performance Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .dashboard-header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .dashboard-header h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .dashboard-header p {
+            color: #7f8c8d;
+            font-size: 1.1em;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+
+        .stat-card h3 {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .stat-value {
+            color: #2c3e50;
+            font-size: 2.5em;
+            font-weight: bold;
+        }
+
+        .stat-card .stat-label {
+            color: #95a5a6;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+            gap: 30px;
+            /* REMOVED: grid-auto-rows: minmax(800px, auto);  */
+        }
+
+        .chart-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+            transition: transform 0.3s ease;
+            display: grid;
+            grid-template-rows: auto auto 1fr;
+        }
+
+        .chart-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.25);
+        }
+
+        .chart-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+
+        .chart-image-container {
+            background: white;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .chart-image {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .insight-box {
+            padding: 25px;
+            background: #f8f9fa;
+            border-left: 5px solid #667eea;
+            margin: 0;
+            width: 100%;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .insight-box h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            margin-top: 0;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+        }
+
+        .insight-box h4::before {
+            content: "💡";
+            margin-right: 10px;
+            font-size: 1.3em;
+        }
+
+        .insight-box p {
+            color: #555;
+            line-height: 1.8;
+            margin-bottom: 10px;
+        }
+
+        .insight-box ul {
+            margin-left: 20px;
+            color: #555;
+        }
+
+        .insight-box li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+
+        .highlight {
+            background: #fff3cd;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .warning {
+            color: #ffc107;
+            font-weight: bold;
+        }
+
+        .danger {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .footer {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-top: 30px;
+            text-align: center;
+            color: #7f8c8d;
+        }
+
+        @media (max-width: 768px) {
+            .chart-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .dashboard-header h1 {
+                font-size: 1.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <div class="dashboard-header">
+            <h1>🤖 AI Agent Performance Dashboard</h1>
+            <p>Comprehensive Analysis of Agent Task Execution & Tool Usage</p>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Tasks</h3>
+                <div class="stat-value">79</div>
+                <div class="stat-label">Agent Executions</div>
+            </div>
+            <div class="stat-card">
+                <h3>Success Rate</h3>
+                <div class="stat-value success">60.7%</div>
+                <div class="stat-label">Validation Success</div>
+            </div>
+            <div class="stat-card">
+                <h3>Avg Tools/Task</h3>
+                <div class="stat-value">5.80</div>
+                <div class="stat-label">Tool Invocations</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Tools</h3>
+                <div class="stat-value">8</div>
+                <div class="stat-label">Unique Tools</div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="chart-grid">
+            <!-- Chart 1: Tool Usage -->
+            <div class="chart-card">
+                <div class="chart-header">📊 Tool Usage Distribution</div>
+                <div class="chart-image-container">
+                    <img src="dashboard/tool_usage_combined.png" alt="Tool Usage Chart" class="chart-image">
+                </div>
+                <div class="insight-box">
+                    <h4>Key Insights</h4>
+                    <p><span class="highlight">fill_field</span> is the most frequently used tool with <span class="success">134 invocations</span>, indicating form-filling is a primary agent activity.</p>
+                    <ul>
+                        <li><strong>Top 3 Tools:</strong> fill_field (134), click_text (82), smart_search (35)</li>
+                        <li>These three tools account for approximately <span class="highlight">77%</span> of all tool usage</li>
+                        <li><strong>Interpretation:</strong> Agent workflow is heavily focused on UI interaction (filling forms and clicking) followed by search operations</li>
+                        <li><strong>Action:</strong> Optimize fill_field and click_text performance for maximum impact</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Chart 2: Task Success Rate -->
+            <div class="chart-card">
+                <div class="chart-header">✅ Task Validation Success Rate</div>
+                <div class="chart-image-container">
+                    <img src="dashboard/task_success_rates.png" alt="Task Success Rate Chart" class="chart-image">
+                </div>
+                <div class="insight-box">
+                    <h4>Key Insights</h4>
+                    <p>The agent achieved a <span class="success">60.71% validation success rate</span> with 17 validated tasks out of 28 total validations.</p>
+                    <ul>
+                        <li><strong>Validated Tasks:</strong> 17 (60.71%)</li>
+                        <li><strong>Failed Validations:</strong> 11 (39.29%)</li>
+                        <li><strong>Interpretation:</strong> Over half of tasks are completing successfully, showing the agent is functional but needs refinement</li>
+                        <li><strong>Action:</strong> Investigate the 11 failed tasks to identify common patterns and failure points</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Chart 3: Tools Per Task -->
+            <div class="chart-card">
+                <div class="chart-header">🔧 Tool Count Per Task Analysis</div>
+                <div class="chart-image-container">
+                    <img src="dashboard/tool_per_task.png" alt="Tools Per Task Chart" class="chart-image">
+                </div>
+                <div class="insight-box">
+                    <h4>Key Insights</h4>
+                    <p>Task complexity varies significantly with an average of <span class="highlight">5.80 tools per task</span>, ranging from 1 to 20 tools.</p>
+                    <ul>
+                        <li><strong>Simple Tasks (1-3 tools):</strong> Suggest request might be quick lookups or search requests</li>
+                        <li><strong>Moderate Tasks (4-8 tools):</strong> Suggests more complex request like editing profile information</li>
+                        <li><strong>Complex Tasks (10+ tools):</strong> Suggests request might be more complex tasks or there are alot of retries for that task</li>
+                        <li><strong>29% of tasks</strong> (23/79) required <span class="warning">zero tools</span> - purely conversational responses</li>
+                        <li><strong>Efficiency Indicator:</strong> Clustering around 1-3 tools suggests most user requests are simple </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Chart 4: Tool Success vs Failure -->
+            <div class="chart-card">
+                <div class="chart-header">⚖️ Tool Performance: Success vs Failure</div>
+                <div class="chart-image-container">
+                    <img src="dashboard/tools_sucess_vs_failure_rate.png" alt="Tool Success vs Failure Chart" class="chart-image">
+                </div>
+                <div class="insight-box">
+                    <h4>Key Insights</h4>
+                    <p>Tool reliability varies significantly - some tools show high failure rates requiring immediate attention.</p>
+                    <ul>
+                        <li><strong>Highest Failure:</strong> fill_field has 101 failures despite being most used - <span class="danger">critical optimization target</span></li>
+                        <li><strong>Most Reliable:</strong> validate_claim_advanced (31.03% success), navigate_to_main_page (43.75% success)</li>
+                        <li><strong>Concerning Pattern:</strong> Core interaction tools (fill_field, click_text) have lower success rates, impacting overall agent performance</li>
+                        <li><strong>Action:</strong>
+                            <ul>
+                                <li>Improve field locator strategies for fill_field</li>
+                                <li>Add retry logic for click_text failures</li>
+                                <li>Investigate why smart_search has only 17.14% success rate</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p> 🔍Zoom in to 100-125% for optimal viewing | Data Source: Ai Agent Cloudwatch Logs</p>
+            <p>Powered by Apache Spark & Python Analytics</p>
+        </div>
+    </div>
+</body>
+</html>
