@@ -1,67 +1,48 @@
-%spark.pyspark
+%pyspark
+from pyspark.sql.functions import *
+import json
+import boto3
 
-# Extract tool names with regex - clean and readable
+# Load data from S3 with multiLine option
+df = spark.read.option("multiLine", "true").json("s3://agent-actions-logs/logs-insights-results-fixed.json/part-00000-d007150a-8ed7-4718-99f3-945fcb6b7795-c000.txt")
+
+print(f"Total records loaded: {df.count()}")
+
+# Extract tool names from "Invoking:" messages
 tool_counts = df.filter(col("@message").contains("Invoking:")) \
     .withColumn("tool_name", regexp_extract(col("@message"), r'Invoking: `([^`]+)`', 1)) \
     .groupBy("tool_name").count() \
     .orderBy(col("count").desc())
 
+print("\nTool Usage Distribution:")
+print("="*80)
 tool_counts.show(tool_counts.count(), truncate=False)
 
-%spark.pyspark
-import matplotlib.pyplot as plt
-import boto3
-
-# Convert to pandas
+# Convert to pandas for JSON export
 tool_counts_pd = tool_counts.toPandas()
 
-# Create figure with 2 subplots side by side
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8))
+# Create JSON structure
+json_data = {
+    "total_invocations": int(tool_counts_pd['count'].sum()),
+    "unique_tools": len(tool_counts_pd),
+    "data": [
+        {"tool_name": row['tool_name'], "count": int(row['count'])} 
+        for _, row in tool_counts_pd.iterrows()
+    ]
+}
 
-# Pie chart on left with labels outside
-wedges, texts, autotexts = ax1.pie(tool_counts_pd['count'], 
-        labels=tool_counts_pd['tool_name'], 
-        autopct='%1.1f%%',
-        startangle=90,
-        colors=plt.cm.Set3.colors,
-        pctdistance=0.85,
-        labeldistance=1.1)
+# Save JSON locally
+json_path = '/tmp/tool_usage.json'
+with open(json_path, 'w') as f:
+    json.dump(json_data, f, indent=2)
 
-ax1.set_title('Agent Tool Usage Distribution', fontsize=16, fontweight='bold', pad=20)
-ax1.axis('equal')
+print(f"\nJSON saved locally: {json_path}")
 
-# Make percentage text bold and white
-for autotext in autotexts:
-    autotext.set_color('white')
-    autotext.set_fontsize(10)
-    autotext.set_weight('bold')
+# Upload JSON to S3
+s3 = boto3.client('s3', region_name='us-east-1')
+s3.upload_file(json_path, 'agent-dashboard-website', 'dashboard/data/tool_usage.json')
+print("✅ JSON uploaded to S3!")
 
-# Table on right
-ax2.axis('tight')
-ax2.axis('off')
-table_data = tool_counts_pd.values.tolist()
-table = ax2.table(cellText=table_data, 
-                  colLabels=['Tool Name', 'Count'],
-                  cellLoc='left',
-                  loc='center',
-                  colWidths=[0.6, 0.2])
-table.auto_set_font_size(False)
-table.set_fontsize(11)
-table.scale(1, 2.5)
-
-# Style the header
-for i in range(2):
-    table[(0, i)].set_facecolor('#40466e')
-    table[(0, i)].set_text_props(weight='bold', color='white')
-
-plt.tight_layout(pad=2.0)
-
-# Save
-chart_path = '/tmp/tool_usage_combined.png'
-plt.savefig(chart_path, dpi=150, bbox_inches='tight')
-plt.show()
-
-# Upload to S3
-s3 = boto3.client('s3')
-s3.upload_file(chart_path, 'agent-dashboard-website', 'dashboard/tool_usage_combined.png')
-print("Combined chart uploaded!")
+print("\n" + "="*80)
+print("✅ SCRIPT 2 COMPLETED SUCCESSFULLY!")
+print("="*80)

@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Performance Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        }
+        
+        :root {
+            --background: 0 0% 100%;
+            --foreground: 222.2 84% 4.9%;
+            --card: 0 0% 100%;
+            --card-foreground: 222.2 84% 4.9%;
+            --popover: 0 0% 100%;
+            --popover-foreground: 222.2 84% 4.9%;
+            --primary: 221.2 83.2% 53.3%;
+            --primary-foreground: 210 40% 98%;
+            --secondary: 210 40% 96.1%;
+            --secondary-foreground: 222.2 47.4% 11.2%;
+            --muted: 210 40% 96.1%;
+            --muted-foreground: 215.4 16.3% 46.9%;
+            --accent: 210 40% 96.1%;
+            --accent-foreground: 222.2 47.4% 11.2%;
+            --destructive: 0 84.2% 60.2%;
+            --destructive-foreground: 210 40% 98%;
+            --border: 214.3 31.8% 91.4%;
+            --input: 214.3 31.8% 91.4%;
+            --ring: 221.2 83.2% 53.3%;
+            --radius: 0.5rem;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: hsl(var(--background));
+            color: hsl(var(--foreground));
+            line-height: 1.6;
+            padding: 24px;
+        }
+
+        .dashboard-container { 
+            max-width: 1400px; 
+            margin: 0 auto; 
+        }
+
+        .dashboard-header {
+            background-color: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            padding: 32px;
+            border-radius: var(--radius);
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            margin-bottom: 24px;
+        }
+
+        .dashboard-header h1 {
+            color: hsl(var(--foreground));
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .dashboard-header p {
+            color: hsl(var(--muted-foreground));
+            font-size: 0.875rem;
+        }
+
+        .badge {
+            display: inline-block;
+            background-color: hsl(var(--secondary));
+            color: hsl(var(--secondary-foreground));
+            padding: 4px 12px;
+            border-radius: calc(var(--radius) - 2px);
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-top: 8px;
+            letter-spacing: 0.025em;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background-color: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            padding: 24px;
+            border-radius: var(--radius);
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .stat-card:hover {
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+
+        .stat-card h3 {
+            color: hsl(var(--muted-foreground));
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-card .stat-value {
+            color: hsl(var(--foreground));
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .stat-card .stat-value.success { 
+            color: hsl(142.1 76.2% 36.3%);
+        }
+
+        .stat-card .stat-label {
+            color: hsl(var(--muted-foreground));
+            font-size: 0.75rem;
+            margin-top: 4px;
+        }
+
+        .trend-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 1.5rem;
+        }
+
+        .trend-up { color: hsl(142.1 76.2% 36.3%); }
+        .trend-down { color: hsl(0 84.2% 60.2%); }
+
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+
+        .chart-card {
+            background-color: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+
+        .chart-card:hover {
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+
+        .chart-header {
+            background-color: hsl(var(--muted));
+            padding: 16px 20px;
+            border-bottom: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chart-header h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: hsl(var(--foreground));
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chart-icon {
+            width: 20px;
+            height: 20px;
+            color: hsl(var(--primary));
+        }
+
+        .insight-button {
+            background: none;
+            border: 1px solid hsl(var(--border));
+            color: hsl(var(--muted-foreground));
+            padding: 6px 12px;
+            border-radius: calc(var(--radius) - 2px);
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .insight-button:hover {
+            background-color: hsl(var(--accent));
+            border-color: hsl(var(--primary));
+            color: hsl(var(--primary));
+        }
+
+        .chart-container {
+            padding: 20px;
+            min-height: 400px;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background-color: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            max-width: 700px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+            animation: modalSlideIn 0.3s ease-out;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            padding: 24px;
+            border-bottom: 1px solid hsl(var(--border));
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: hsl(var(--foreground));
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: hsl(var(--muted-foreground));
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: calc(var(--radius) - 2px);
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background-color: hsl(var(--accent));
+            color: hsl(var(--foreground));
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        .insight-content {
+            color: hsl(var(--foreground));
+            line-height: 1.7;
+        }
+
+        .insight-content h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-top: 16px;
+            margin-bottom: 8px;
+            color: hsl(var(--foreground));
+        }
+
+        .insight-content ul {
+            margin-left: 20px;
+            margin-top: 8px;
+        }
+
+        .insight-content li {
+            margin-bottom: 8px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: hsl(var(--muted-foreground));
+        }
+
+        @media (max-width: 1024px) {
+            .chart-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-header h1 {
+                font-size: 1.5rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <div class="dashboard-header">
+            <h1>AI Agent Performance Dashboard</h1>
+            <p>Real-time analytics powered by CloudWatch logs, processed via Amazon EMR & Apache Spark</p>
+            <span class="badge">Live Data from S3</span>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Tasks</h3>
+                <div class="stat-value" id="totalTasks">-</div>
+                <div class="stat-label">Executed tasks</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Success Rate</h3>
+                <div class="stat-value success" id="successRate">-</div>
+                <div class="stat-label">Task validation rate</div>
+                <span class="trend-indicator" id="successTrend">↑</span>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Avg Tools Per Task</h3>
+                <div class="stat-value" id="avgTools">-</div>
+                <div class="stat-label">Average tool invocations</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Unique Tools</h3>
+                <div class="stat-value" id="totalTools">-</div>
+                <div class="stat-label">Different tools used</div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="chart-grid">
+            <!-- Tool Usage Chart -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h2>
+                        <svg class="chart-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        Tool Usage Distribution
+                    </h2>
+                    <button class="insight-button" onclick="showInsights('toolUsage')">
+                        💡 View Insights
+                    </button>
+                </div>
+                <div class="chart-container" id="toolUsageChart"></div>
+            </div>
+
+            <!-- Success Rate Chart -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h2>
+                        <svg class="chart-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Task Validation Success Rate
+                    </h2>
+                    <button class="insight-button" onclick="showInsights('taskSuccess')">
+                        💡 View Insights
+                    </button>
+                </div>
+                <div class="chart-container" id="successRateChart"></div>
+            </div>
+
+            <!-- Tools Per Task Chart -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h2>
+                        <svg class="chart-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                        </svg>
+                        Tools Per Task - Distribution Curve
+                    </h2>
+                    <button class="insight-button" onclick="showInsights('toolsPerTask')">
+                        💡 View Insights
+                    </button>
+                </div>
+                <div class="chart-container" id="toolsPerTaskChart"></div>
+            </div>
+
+            <!-- Tool Performance Chart -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h2>
+                        <svg class="chart-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                        </svg>
+                        Tool Performance: Success vs Failure
+                    </h2>
+                    <button class="insight-button" onclick="showInsights('toolPerformance')">
+                        💡 View Insights
+                    </button>
+                </div>
+                <div class="chart-container" id="toolPerformanceChart"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Insights Modal -->
+    <div class="modal-overlay" id="insightsModal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modalTitle">Insights</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="insight-content" id="insightContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let dashboardData = {};
+        let filteredData = {};
+
+        const config = { 
+            responsive: true, 
+            displayModeBar: true,
+            displaylogo: false,
+            modeBarButtonsToRemove: ['lasso2d', 'select2d']
+        };
+
+        const insights = {
+            toolUsage: `
+                <h4>Key Observations:</h4>
+                <ul>
+                    <li><strong>Top Tool: fill_field (134 invocations, 41.4%)</strong> - Dominant tool indicating form-filling is the primary agent activity</li>
+                    <li><strong>Second: click_text (82 invocations, 25.3%)</strong> - High UI interaction frequency for navigation and button clicks</li>
+                    <li><strong>Third: smart_search (35 invocations, 10.8%)</strong> - Significant search operations for finding elements or information</li>
+                    <li><strong>Top 3 tools account for ~77.5% of all usage</strong> - Strong concentration suggests focused, repetitive workflows</li>
+                    <li><strong>8 unique tools total</strong> - Relatively small toolkit indicating specialized use case (form automation/EMR interaction)</li>
+                </ul>
+                <h4>Usage Pattern Analysis:</h4>
+                <ul>
+                    <li><strong>Core workflow:</strong> fill_field + click_text represent 66.7% of all tool usage, indicating the agent primarily handles form-based EMR tasks</li>
+                    <li><strong>Supporting tools:</strong> smart_search (35), validate_claim_advanced (29), navigate_to_main_page (16) support the core workflow</li>
+                    <li><strong>Specialized tools:</strong> get_secret (14), capture_screenshot (8), read_texts (7) handle authentication and verification</li>
+                </ul>
+                <h4>Recommendations:</h4>
+                <ul>
+                    <li><strong>Critical optimization target:</strong> Improving fill_field performance will have the highest impact (41% of operations)</li>
+                    <li><strong>Consider caching:</strong> Frequently used click_text operations may benefit from element caching strategies</li>
+                    <li><strong>Monitor tool balance:</strong> Heavy reliance on top 2 tools creates single points of failure - ensure robust error handling</li>
+                    <li><strong>Add fallback mechanisms:</strong> For critical workflows, implement alternative strategies when primary tools fail</li>
+                </ul>
+            `,
+            taskSuccess: `
+                <h4>Key Observations:</h4>
+                <ul>
+                    <li><strong>Success Rate: 58.62%</strong> - 17 out of 29 validated tasks completed successfully</li>
+                    <li><strong>Failed Validations: 12 (41.38%)</strong> - Significant failure rate requiring investigation</li>
+                    <li><strong>Performance Assessment:</strong> Above 50% indicates functional agent, but below 75% suggests substantial room for improvement</li>
+                    <li><strong>Sample Size: 29 validations</strong> - 36.7% of total tasks (79) were validated, indicating many tasks may not have validation checks</li>
+                </ul>
+                <h4>Failure Pattern Analysis:</h4>
+                <ul>
+                    <li><strong>High failure rate correlation:</strong> Given that fill_field (24.63%) and click_text (26.83%) have low success rates, validation failures likely stem from these tool issues</li>
+                    <li><strong>Potential causes:</strong> Element location failures, timing issues, incorrect field values, or validation criteria too strict</li>
+                    <li><strong>Success threshold:</strong> 58.62% is acceptable for testing phase but needs improvement for production deployment</li>
+                    <li><strong>Positive trend:</strong> The system is functional and can complete majority of tasks despite tool reliability challenges</li>
+                </ul>
+                <h4>Recommendations:</h4>
+                <ul>
+                    <li><strong>Priority 1:</strong> Analyze the 12 failed validations to identify common failure patterns (similar tasks, specific tools, timing issues)</li>
+                    <li><strong>Priority 2:</strong> Increase validation coverage - only 37% of tasks have validation data; add validation to more task types</li>
+                    <li><strong>Priority 3:</strong> Implement graduated validation - use soft checks for minor issues vs. hard failures for critical problems</li>
+                    <li><strong>Target improvement:</strong> Aim for 80%+ success rate by addressing fill_field and click_text reliability issues</li>
+                    <li><strong>Add logging:</strong> Capture detailed failure reasons to enable data-driven optimization</li>
+                </ul>
+            `,
+            toolsPerTask: `
+                <h4>Key Observations:</h4>
+                <ul>
+                    <li><strong>Distribution Shape:</strong> The curve shows task complexity distribution from simplest (left) to most complex (right)</li>
+                    <li><strong>Average: 5.80 tools per task</strong> - indicated by the red dashed line, representing typical task complexity</li>
+                    <li><strong>Simple Tasks (1-3 tools):</strong> 27 tasks (48.2%) - These are likely quick lookups, simple searches, or single-action requests</li>
+                    <li><strong>Moderate Tasks (4-10 tools):</strong> 20 tasks (35.7%) - Common workflows like form filling, multi-step navigation, or data entry</li>
+                    <li><strong>Complex Tasks (11-20 tools):</strong> 9 tasks (16.1%) - Advanced multi-step operations involving multiple forms or comprehensive searches</li>
+                    <li><strong>29% of tasks (23/79)</strong> used zero tools - these were purely conversational responses requiring no tool invocation</li>
+                </ul>
+                <h4>Distribution Analysis:</h4>
+                <ul>
+                    <li><strong>Left cluster (1-6 tools):</strong> Majority of tasks fall here, indicating most user requests are straightforward</li>
+                    <li><strong>Peak complexity: 20 tools</strong> - Maximum observed, likely indicating complex multi-page form workflows or retry scenarios</li>
+                    <li><strong>Task efficiency:</strong> The concentration of tasks below average suggests the agent handles most requests efficiently</li>
+                    <li><strong>Bimodal distribution:</strong> Clear separation between simple (1-2 tools) and moderate (6+ tools) tasks indicates two distinct workflow types</li>
+                </ul>
+                <h4>Recommendations:</h4>
+                <ul>
+                    <li><strong>Optimize high-tool tasks:</strong> Investigate tasks using 10+ tools to identify opportunities for workflow consolidation</li>
+                    <li><strong>Monitor the curve shape:</strong> If the curve shifts right over time, it may indicate increasing task complexity or degrading tool performance</li>
+                    <li><strong>Reduce outliers:</strong> Tasks with 15-20 tools likely indicate retry loops or inefficient workflows that need debugging</li>
+                    <li><strong>Benchmark performance:</strong> Use this distribution as a baseline to measure improvements after optimization efforts</li>
+                    <li><strong>Create composite tools:</strong> For common multi-tool sequences, create higher-level tools to reduce complexity</li>
+                </ul>
+            `,
+            toolPerformance: `
+                <h4>Key Observations:</h4>
+                <ul>
+                    <li><strong>Best Performer: navigate_to_main_page</strong> - 7 successes vs 9 failures (43.75% success rate) - Most reliable navigation tool</li>
+                    <li><strong>Critical Issue: validate_claim_advanced</strong> - 9 successes vs 20 failures (31.03% success rate) - Validation struggles</li>
+                    <li><strong>Major Concern: read_texts</strong> - 2 successes vs 5 failures (28.57% success rate) - Text reading needs improvement</li>
+                    <li><strong>Problematic: click_text</strong> - 22 successes vs 60 failures (26.83% success rate) - Core navigation tool is unreliable</li>
+                    <li><strong>Most Used, Least Reliable: fill_field</strong> - 33 successes vs 101 failures (24.63% success rate) - Critical bottleneck</li>
+                    <li><strong>Overall Pattern:</strong> No tool exceeds 50% success rate - systemic reliability issues across the entire toolkit</li>
+                </ul>
+                <h4>Critical Analysis:</h4>
+                <ul>
+                    <li><strong>Severity Assessment:</strong> The two most-used tools (fill_field 41% usage, click_text 25% usage) have worst reliability - compounding failure effect</li>
+                    <li><strong>Impact:</strong> With 66% of operations using unreliable tools, the 58.62% task success rate makes sense mathematically</li>
+                    <li><strong>Root Cause Indicators:</strong> Consistent low success across all tools suggests underlying issues: element location strategy, wait times, page load detection</li>
+                    <li><strong>Positive note:</strong> Tools are being invoked correctly, the issue is execution reliability, not design</li>
+                </ul>
+                <h4>Urgent Action Items:</h4>
+                <ul>
+                    <li><strong>Immediate Fix: fill_field (Highest Impact)</strong>
+                        <ul>
+                            <li>Implement multiple selector strategies (ID, name, label, placeholder, data attributes)</li>
+                            <li>Add explicit waits for element visibility and interactability (5-10 second timeouts)</li>
+                            <li>Verify field is not disabled/readonly before filling</li>
+                            <li>Add retry logic with exponential backoff on failure</li>
+                            <li>Log specific failure reasons (element not found, not visible, not interactable)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Priority 2: click_text (Second Highest Usage)</strong>
+                        <ul>
+                            <li>Improve text matching (exact vs partial, case insensitive, trim whitespace)</li>
+                            <li>Add scroll-into-view before clicking to handle off-screen elements</li>
+                            <li>Check for overlapping elements or modal blockers that prevent clicks</li>
+                            <li>Implement JavaScript click fallback if regular click fails</li>
+                            <li>Add delay after click to wait for page transitions</li>
+                        </ul>
+                    </li>
+                    <li><strong>Priority 3: smart_search</strong>
+                        <ul>
+                            <li>Review search algorithm - currently only 17.14% success rate</li>
+                            <li>Add fuzzy matching for better element discovery</li>
+                            <li>Implement result ranking and confidence scoring</li>
+                            <li>Expand search scope (consider shadow DOM, iframes)</li>
+                        </ul>
+                    </li>
+                    <li><strong>System-wide Improvements:</strong>
+                        <ul>
+                            <li>Add comprehensive logging to capture exact failure reasons for each tool</li>
+                            <li>Implement progressive timeout strategies (quick initial check, then longer waits)</li>
+                            <li>Consider headless browser optimization or switching to more stable automation framework</li>
+                            <li>Add health checks before each tool invocation to verify page state</li>
+                        </ul>
+                    </li>
+                </ul>
+                <h4>Expected Impact:</h4>
+                <ul>
+                    <li>Fixing fill_field alone could improve overall success rate by 15-20 percentage points</li>
+                    <li>Combined fill_field + click_text improvements could push success rate above 75%</li>
+                    <li>Target: 80%+ success rate achievable with these focused improvements</li>
+                </ul>
+            `
+        };
+
+        function showInsights(chartType) {
+            const modal = document.getElementById('insightsModal');
+            const title = document.getElementById('modalTitle');
+            const content = document.getElementById('insightContent');
+            
+            const titles = {
+                toolUsage: 'Tool Usage Distribution - Insights',
+                taskSuccess: 'Task Success Rate - Insights',
+                toolsPerTask: 'Tools Per Task Distribution - Insights',
+                toolPerformance: 'Tool Performance - Insights'
+            };
+            
+            title.textContent = titles[chartType];
+            content.innerHTML = insights[chartType];
+            modal.classList.add('active');
+        }
+
+        function closeModal(event) {
+            if (!event || event.target === event.currentTarget) {
+                document.getElementById('insightsModal').classList.remove('active');
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        async function loadData() {
+            try {
+                const [toolUsage, taskSuccess, toolsPerTask, toolPerformance] = await Promise.all([
+                    fetch('https://agent-dashboard-website.s3.us-east-1.amazonaws.com/dashboard/data/tool_usage.json').then(r => r.json()),
+                    fetch('https://agent-dashboard-website.s3.us-east-1.amazonaws.com/dashboard/data/task_success_rates.json').then(r => r.json()),
+                    fetch('https://agent-dashboard-website.s3.us-east-1.amazonaws.com/dashboard/data/tools_per_task.json').then(r => r.json()),
+                    fetch('https://agent-dashboard-website.s3.us-east-1.amazonaws.com/dashboard/data/tool_performance.json').then(r => r.json())
+                ]);
+
+                dashboardData = { toolUsage, taskSuccess, toolsPerTask, toolPerformance };
+                filteredData = JSON.parse(JSON.stringify(dashboardData));
+                
+                updateStats();
+                renderCharts();
+            } catch (error) {
+                console.error('Error:', error);
+                document.querySelectorAll('.chart-container').forEach(el => {
+                    el.innerHTML = '<div class="loading">⚠️ Error loading data. Check S3 CORS settings.</div>';
+                });
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('totalTasks').textContent = dashboardData.toolsPerTask.total_chains;
+            document.getElementById('successRate').textContent = dashboardData.taskSuccess.success_rate + '%';
+            document.getElementById('avgTools').textContent = dashboardData.toolsPerTask.avg_tools;
+            document.getElementById('totalTools').textContent = dashboardData.toolUsage.unique_tools;
+            
+            const successTrend = document.getElementById('successTrend');
+            if (dashboardData.taskSuccess.success_rate > 50) {
+                successTrend.textContent = '↑';
+                successTrend.className = 'trend-indicator trend-up';
+            } else {
+                successTrend.textContent = '↓';
+                successTrend.className = 'trend-indicator trend-down';
+            }
+        }
+
+        function renderCharts() {
+            // Tool Usage Chart
+            const toolData = dashboardData.toolUsage.data;
+            Plotly.newPlot('toolUsageChart', [{
+                labels: toolData.map(d => d.tool_name),
+                values: toolData.map(d => d.count),
+                type: 'pie',
+                hole: 0.4,
+                marker: {
+                    colors: ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#6366f1', '#14b8a6', '#f97316']
+                },
+                textinfo: 'label+percent',
+                textposition: 'outside',
+                automargin: true
+            }], {
+                height: 400,
+                margin: { t: 40, b: 40, l: 40, r: 40 },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto' }
+            }, config);
+
+            // Success Rate Chart
+            const successData = dashboardData.taskSuccess.data;
+            Plotly.newPlot('successRateChart', [{
+                x: successData.map(d => d.status),
+                y: successData.map(d => d.count),
+                type: 'bar',
+                marker: { 
+                    color: ['#10b981', '#ef4444'],
+                    line: { width: 0 }
+                },
+                text: successData.map(d => d.count),
+                textposition: 'auto',
+                textfont: { size: 14, color: '#fff' }
+            }], {
+                height: 400,
+                margin: { t: 40, b: 60, l: 60, r: 40 },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto' },
+                xaxis: { 
+                    title: 'Status',
+                    gridcolor: '#e5e7eb'
+                },
+                yaxis: { 
+                    title: 'Count',
+                    gridcolor: '#e5e7eb'
+                },
+                showlegend: false
+            }, config);
+
+            // Tools Per Task Chart - DISTRIBUTION CURVE (SORTED)
+            const toolsPerTask = dashboardData.toolsPerTask.data;
+            const avgLine = dashboardData.toolsPerTask.avg_tools;
+            
+            const sortedData = [...toolsPerTask].sort((a, b) => a.tool_count - b.tool_count);
+            
+            Plotly.newPlot('toolsPerTaskChart', [
+                {
+                    x: sortedData.map((d, idx) => idx + 1),
+                    y: sortedData.map(d => d.tool_count),
+                    mode: 'markers',
+                    type: 'scatter',
+                    name: 'Tasks',
+                    marker: { 
+                        size: 8, 
+                        color: '#3b82f6',
+                        line: { color: '#1d4ed8', width: 1 }
+                    },
+                    text: sortedData.map(d => `Task ID: ${d.chain_id}<br>Tools: ${d.tool_count}`),
+                    hovertemplate: '%{text}<extra></extra>'
+                },
+                {
+                    x: [1, sortedData.length],
+                    y: [avgLine, avgLine],
+                    mode: 'lines',
+                    name: `Avg: ${avgLine}`,
+                    line: { 
+                        color: '#ef4444', 
+                        dash: 'dash',
+                        width: 2
+                    }
+                }
+            ], {
+                height: 400,
+                margin: { t: 40, b: 60, l: 60, r: 40 },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto' },
+                xaxis: { 
+                    title: 'Task Rank (Sorted by Tool Count)',
+                    gridcolor: '#e5e7eb'
+                },
+                yaxis: { 
+                    title: 'Tool Count',
+                    gridcolor: '#e5e7eb'
+                },
+                showlegend: true,
+                legend: {
+                    orientation: 'h',
+                    y: -0.2
+                }
+            }, config);
+
+            // Tool Performance Chart
+            const perfData = dashboardData.toolPerformance.data;
+            Plotly.newPlot('toolPerformanceChart', [
+                {
+                    y: perfData.map(d => d.tool_name),
+                    x: perfData.map(d => -d.failure),
+                    type: 'bar',
+                    orientation: 'h',
+                    name: 'Failure',
+                    marker: { color: '#ef4444' }
+                },
+                {
+                    y: perfData.map(d => d.tool_name),
+                    x: perfData.map(d => d.success),
+                    type: 'bar',
+                    orientation: 'h',
+                    name: 'Success',
+                    marker: { color: '#10b981' }
+                }
+            ], {
+                height: 400,
+                margin: { t: 40, b: 60, l: 160, r: 40 },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { family: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto' },
+                barmode: 'overlay',
+                xaxis: { 
+                    title: 'Count',
+                    gridcolor: '#e5e7eb'
+                },
+                showlegend: true,
+                legend: {
+                    orientation: 'h',
+                    y: -0.2
+                }
+            }, config);
+        }
+
+        window.addEventListener('DOMContentLoaded', loadData);
+    </script>
+</body>
+</html>
