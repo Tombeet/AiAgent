@@ -3,9 +3,11 @@ import re  # Regular expressions for parsing output
 import os  # OS operations, e.g., checking if screenshot files exist
 from api_client import run_agent_via_api  # Function to send user queries to the backend agent
 
-# --- NEW: Get API_BASE_URL for building image URLs ---
-#API_BASE_URL = "http://localhost:8000"  # MODIFIED
-API_BASE_URL = os.environ["API_BASE_URL"].rstrip("/")
+#API_BASE_URL to use if running application locally
+API_BASE_URL = "http://localhost:8000"  # MODIFIED
+
+#API_BASE_URL to use if running application as container
+#API_BASE_URL = os.environ["API_BASE_URL"].rstrip("/")
 
 # Function to send a user query to the backend agent and return the response and screenshot path
 def run_agent(query):
