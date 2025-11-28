@@ -1,4 +1,4 @@
-PROJECT PART 2 (BIG DATA TECHNOLOGY)
+# PROJECT PART 2 (BIG DATA TECHNOLOGY)
 
 1. This is an orphan branch in the repo created for the purpose of agent logs analyis using big data technology (spark + aws EMR)
 
