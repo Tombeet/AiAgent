@@ -7,7 +7,7 @@ PROJECT PART 2 (BIG DATA TECHNOLOGY)
 
 - pyspark codes used to run in zepplin notebook in the AWS EMR cluster to generate data charts and reports
 
--index.html file which is used to present our generated charts/reports in the form of a dashboard/website
+- index.html file which is used to present our generated charts/reports in the form of a dashboard/website
 
 
 ARCHITECTURE:
