@@ -1,0 +1,55 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, master,bgbrowser]
+  pull_request:
+    branches: [main, master,bgbrowser]
+
+jobs:
+
+  # ─────────────────────────────────────────
+  # JOB 1: Lint — check Python syntax & style
+  # ─────────────────────────────────────────
+  lint:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install flake8
+      - run: flake8 . --max-line-length=120 --exclude=.git
+
+  # ─────────────────────────────────────────
+  # JOB 2: Security scans
+  # ─────────────────────────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install bandit pip-audit
+      - name: Scan code for security issues
+        run: bandit -r . -ll
+      - name: Scan dependencies for known CVEs
+        run: pip-audit -r requirements.txt
+
+  # ─────────────────────────────────────────
+  # JOB 3: Build Docker images
+  # Only runs if lint + security both pass
+  # ─────────────────────────────────────────
+  docker-build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [lint, security]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -f Dockerfile.backend -t ai-agent-backend:ci .
+      - name: Build frontend image
+        run: docker build -f Dockerfile.frontend -t ai-agent-frontend:ci .
